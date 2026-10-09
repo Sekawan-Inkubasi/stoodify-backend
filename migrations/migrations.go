@@ -6,13 +6,45 @@ import (
 	"gorm.io/gorm"
 )
 
+// ==================== ENUM CONSTANTS ====================
+
+const (
+	RoleStudent = "student"
+	RoleTeacher = "teacher"
+	RoleAdmin   = "admin"
+)
+
+const (
+	StatusPending    = "pending"
+	StatusInProgress = "in_progress"
+	StatusDone       = "done"
+	StatusLate       = "late"
+)
+
+const (
+	SessionPlanned   = "planned"
+	SessionCompleted = "completed"
+	SessionSkipped   = "skipped"
+)
+
+const (
+	NotifReminder = "reminder"
+	NotifWarning  = "warning"
+	NotifLate     = "late"
+)
+
+const (
+	FeedbackAccurate   = "accurate"
+	FeedbackInaccurate = "inaccurate"
+)
+
 // ==================== BASE MODEL ====================
 
 type Base struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"` // Sembunyikan total dari JSON response
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // ==================== USER & PREFERENCES ====================
@@ -21,25 +53,25 @@ type User struct {
 	Base
 	Name         string          `gorm:"not null" json:"name"`
 	Email        string          `gorm:"uniqueIndex;not null" json:"email"`
-	PasswordHash string          `gorm:"column:password_hash;not null" json:"-"` // Jangan pernah kirim ke client
+	PasswordHash string          `gorm:"column:password_hash;not null" json:"-"`
 	Role         string          `gorm:"default:student" json:"role"`
-	Preferences  *UserPreference `gorm:"foreignKey:UserID" json:"preferences,omitempty"` // Pointer agar null jika kosong
+	Preferences  *UserPreference `gorm:"foreignKey:UserID" json:"preferences,omitempty"`
 }
 
 type UserPreference struct {
 	Base
-	UserID          uint   `gorm:"uniqueIndex;not null" json:"userID"`
-	StartTime       string `json:"startTime"`       // Format: "08:00"
-	EndTime         string `json:"endTime"`         // Format: "20:00"
-	SessionDuration int    `json:"sessionDuration"` // Dalam menit
-	ActiveDays      string `json:"activeDays"`      // Format: "1,2,3,4,5" (Senin-Jumat)
+	UserID          uint   `gorm:"uniqueIndex;not null" json:"user_id"`
+	StartTime       string `json:"start_time"`
+	EndTime         string `json:"end_time"`
+	SessionDuration int    `json:"session_duration"`
+	ActiveDays      string `json:"active_days"`
 }
 
 // ==================== SUBJECT & SCHEDULE ====================
 
 type Subject struct {
 	Base
-	UserID     uint   `gorm:"index;not null" json:"userID"`
+	UserID     uint   `gorm:"index;not null" json:"user_id"`
 	Name       string `gorm:"not null" json:"name"`
 	Color      string `json:"color"`
 	Difficulty int    `gorm:"check:difficulty >= 1 AND difficulty <= 5" json:"difficulty"`
@@ -47,95 +79,105 @@ type Subject struct {
 
 type Schedule struct {
 	Base
-	UserID    uint   `gorm:"index;not null" json:"userID"`
-	SubjectID uint   `gorm:"index" json:"subjectID"`
-	DayOfWeek string `json:"dayOfWeek"` // e.g., "Monday"
-	StartTime string `json:"startTime"` // e.g., "07:00" (String lebih aman untuk jadwal mingguan tanpa tanggal)
-	EndTime   string `json:"endTime"`   // e.g., "08:30"
+	UserID    uint   `gorm:"index;not null" json:"user_id"`
+	SubjectID uint   `gorm:"index" json:"subject_id"`
+	DayOfWeek string `json:"day_of_week"`
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
 
-	User    User    `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
-	Subject Subject `gorm:"foreignKey:SubjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	Subject *Subject `gorm:"foreignKey:SubjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"subject,omitempty"`
 }
 
 // ==================== TASK & SUBTASK ====================
 
 type Task struct {
 	Base
-	UserID        uint      `gorm:"index;not null" json:"userID"`
-	SubjectID     uint      `gorm:"index" json:"subjectID"`
-	Title         string    `gorm:"not null" json:"title"`
-	Description   string    `json:"description"`
-	Deadline      time.Time `gorm:"index;not null" json:"deadline"`
-	Difficulty    int       `gorm:"check:difficulty >= 1 AND difficulty <= 5" json:"difficulty"`
-	PriorityScore float64   `json:"priorityScore"`                 // Untuk Priority Engine
-	Status        string    `gorm:"default:pending" json:"status"` // pending, in_progress, done, late
-	Progress      int       `gorm:"default:0;check:progress >= 0 AND progress <= 100" json:"progress"`
-	Subtasks      []Subtask `gorm:"foreignKey:TaskID" json:"subtasks,omitempty"`
+	UserID            uint      `gorm:"index;not null" json:"user_id"`
+	SubjectID         uint      `gorm:"index" json:"subject_id"`
+	Title             string    `gorm:"not null" json:"title"`
+	Description       string    `json:"description"`
+	Type              string    `gorm:"default:assignment" json:"type"` // exam, project, assignment, reading
+	Deadline          time.Time `gorm:"index;not null" json:"deadline"`
+	Difficulty        int       `gorm:"check:difficulty >= 1 AND difficulty <= 5" json:"difficulty"`
+	EstimatedDuration int       `gorm:"default:60" json:"estimated_duration"` // menit
+	PriorityScore     float64   `json:"priority_score"`
+	Status            string    `gorm:"index;default:pending" json:"status"`
+	Progress          int       `gorm:"default:0;check:progress >= 0 AND progress <= 100" json:"progress"`
+	IsSnoozed         bool      `gorm:"default:false" json:"is_snoozed"`
+	Notes             string    `json:"notes"`
+	Subtasks          []Subtask `gorm:"foreignKey:TaskID" json:"subtasks,omitempty"`
 
-	User    User    `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
-	Subject Subject `gorm:"foreignKey:SubjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	Subject *Subject `gorm:"foreignKey:SubjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"subject,omitempty"`
 }
 
 type Subtask struct {
 	Base
-	TaskID      uint   `gorm:"index;not null" json:"taskID"`
+	TaskID      uint   `gorm:"index;not null" json:"task_id"`
 	Title       string `gorm:"not null" json:"title"`
-	IsCompleted bool   `json:"isCompleted"`
+	IsCompleted bool   `json:"is_completed"`
 }
 
 // ==================== ACTIVITY & STUDY SESSION ====================
 
 type Activity struct {
 	Base
-	UserID     uint   `gorm:"index;not null" json:"userID"`
+	UserID     uint   `gorm:"index;not null" json:"user_id"`
 	Title      string `gorm:"not null" json:"title"`
-	StartTime  string `json:"startTime"`  // e.g., "15:00"
-	EndTime    string `json:"endTime"`    // e.g., "17:00"
-	Recurrence string `json:"recurrence"` // e.g., "weekly", "daily"
-
-	User User `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	StartTime  string `json:"start_time"`
+	EndTime    string `json:"end_time"`
+	Recurrence string `json:"recurrence"`
 }
 
 type StudySession struct {
 	Base
-	UserID      uint      `gorm:"index;not null" json:"userID"`
-	TaskID      uint      `gorm:"index;not null" json:"taskID"`
-	SessionDate time.Time `gorm:"index;not null" json:"sessionDate"`
-	StartTime   string    `json:"startTime"` // e.g., "19:00"
-	Duration    int       `json:"duration"`  // Dalam menit
-	Status      string    `json:"status"`    // planned, completed, skipped
-	AIGenerated bool      `json:"aiGenerated"`
+	UserID         uint      `gorm:"index;not null" json:"user_id"`
+	TaskID         uint      `gorm:"index;not null" json:"task_id"`
+	SessionDate    time.Time `gorm:"index;not null" json:"session_date"`
+	StartTime      string    `json:"start_time"`
+	Duration       int       `json:"duration"`
+	TargetProgress int       `json:"target_progress"`
+	Status         string    `gorm:"default:planned" json:"status"`
+	AIGenerated    bool      `json:"ai_generated"`
+	Reason         string    `json:"reason"`
 
-	User User `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
-	Task Task `gorm:"foreignKey:TaskID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	Task *Task `gorm:"foreignKey:TaskID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"task,omitempty"`
 }
 
 // ==================== NOTIFICATION & AI PREDICTION ====================
 
 type Notification struct {
 	Base
-	UserID      uint      `gorm:"index;not null" json:"userID"`
-	TaskID      *uint     `gorm:"index" json:"taskID,omitempty"` // Opsional, bisa untuk notifikasi umum
+	UserID      uint      `gorm:"index;not null" json:"user_id"`
+	TaskID      *uint     `gorm:"index" json:"task_id,omitempty"`
 	Title       string    `gorm:"not null" json:"title"`
-	Type        string    `json:"type"` // reminder, warning, etc.
-	ScheduledAt time.Time `json:"scheduledAt"`
-	IsRead      bool      `json:"isRead"`
-
-	User User `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
-	Task Task `gorm:"foreignKey:TaskID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	Message     string    `json:"message"`
+	Type        string    `json:"type"` // reminder, warning, late
+	ScheduledAt time.Time `gorm:"index" json:"scheduled_at"`
+	IsRead      bool      `json:"is_read"`
 }
 
 type MaterialPrediction struct {
 	Base
-	UserID            uint    `gorm:"index;not null" json:"userID"`
-	SubjectID         uint    `gorm:"index;not null" json:"subjectID"`
-	PredictedMaterial string  `gorm:"not null" json:"predictedMaterial"`
+	UserID            uint    `gorm:"index;not null" json:"user_id"`
+	SubjectID         uint    `gorm:"index;not null" json:"subject_id"`
+	PredictedMaterial string  `gorm:"not null" json:"predicted_material"`
 	Confidence        float64 `gorm:"check:confidence >= 0 AND confidence <= 100" json:"confidence"`
 	Reason            string  `json:"reason"`
-	UserFeedback      string  `json:"userFeedback,omitempty"` // accurate, inaccurate
+	Prerequisites     string  `json:"prerequisites"`
+	Preparation       string  `json:"preparation_suggestion"`
+	UserFeedback      string  `json:"user_feedback,omitempty"`
 
-	User    User    `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
-	Subject Subject `gorm:"foreignKey:SubjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	Subject *Subject `gorm:"foreignKey:SubjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"subject,omitempty"`
+}
+
+// ==================== AUTH ====================
+
+type RefreshToken struct {
+	Base
+	UserID    uint       `gorm:"index;not null" json:"user_id"`
+	TokenHash string     `gorm:"uniqueIndex;not null" json:"-"`
+	ExpiresAt time.Time  `gorm:"index;not null" json:"expires_at"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 }
 
 // ==================== MIGRATION HELPERS ====================
@@ -152,11 +194,35 @@ func AllModels() []interface{} {
 		&StudySession{},
 		&Notification{},
 		&MaterialPrediction{},
+		&RefreshToken{},
 	}
 }
 
 func Migrate(db *gorm.DB) error {
-	// GORM AutoMigrate sudah aman dipanggil berulang kali.
-	// Tidak perlu loop HasTable manual (itu bug di kode lama yang bikin tabel lain skip).
-	return db.AutoMigrate(AllModels()...)
+	if err := db.AutoMigrate(AllModels()...); err != nil {
+		return err
+	}
+	return TambahIndexKinerja(db)
+}
+
+// TambahIndexKinerja: index untuk query terpanas (deadline, status, user_id).
+// AutoMigrate tidak membuat index komposit, jadi dibuat eksplisit di sini.
+func TambahIndexKinerja(db *gorm.DB) error {
+	statements := []string{
+		`CREATE INDEX IF NOT EXISTS idx_tasks_user_status ON tasks (user_id, status)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_user_deadline ON tasks (user_id, deadline)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_user_status_deadline ON tasks (user_id, status, deadline)`,
+		`CREATE INDEX IF NOT EXISTS idx_schedules_user_day ON schedules (user_id, day_of_week)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_user_date ON study_sessions (user_id, session_date)`,
+		`CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications (user_id, is_read)`,
+		`CREATE INDEX IF NOT EXISTS idx_notifications_task_type ON notifications (task_id, type, scheduled_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_active ON refresh_tokens (user_id, revoked_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_predictions_user_subject ON material_predictions (user_id, subject_id)`,
+	}
+	for _, stmt := range statements {
+		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }

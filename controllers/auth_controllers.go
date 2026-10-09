@@ -1,23 +1,18 @@
 package controllers
 
 import (
-	//"log"
-	//"net/smtp"
-	//"net/textproto"
-	//"os"
 	"errors"
 	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"stoodify_backend/internal/hashing_password"
 	"stoodify_backend/internal/response"
 	"stoodify_backend/internal/token"
 	"stoodify_backend/middlewares"
 	"stoodify_backend/migrations"
-
-	"github.com/gin-gonic/gin"
-
-	//"github.com/jordan-wright/email"
-	"gorm.io/gorm"
 )
 
 // bcrypt dari string acak; dipakai saat email tidak ketemu agar waktu respons
@@ -48,99 +43,58 @@ type LoginInput struct {
 	Password string `json:"password" binding:"required"`
 }
 
+type RefreshInput struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
 func (ctrl *AuthController) Register(konteks *gin.Context) {
 	var input RegisterInput
-	var user migrations.User
-	var payload migrations.User
+	var existing migrations.User
 
 	if err := konteks.ShouldBindJSON(&input); err != nil {
-		response.BadRequest(konteks, "Body request tidak valid", map[string]string{
-			"body": err.Error(),
-		})
+		response.ValidationError(konteks, err)
 		return
 	}
 
-	//password validation
 	if input.Password != input.ConfirmPassword {
-		response.UnprocessableEntity(konteks, "Input password dan konfirmasi password salah password dan konfirmasi password tidak cocok", map[string]string{
-			"body": "password missmatch",
+		response.UnprocessableEntity(konteks, "password dan konfirmasi password tidak cocok", map[string]string{
+			"confirm_password": "password missmatch",
 		})
 		return
 	}
 
 	input.Email = normalizeEmail(input.Email)
 
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).Where("email = ?", input.Email).First(&user).Error; err != nil && errors.Is(err, gorm.ErrRecordNotFound) == false {
-		response.Fail(konteks, 500, "mohon maaf ada kesalahan di sisi kami", map[string]string{
-			"body": err.Error(),
-		})
-		return
-	} else if err == nil {
+	err := ctrl.DB.WithContext(konteks.Request.Context()).Where("email = ?", input.Email).First(&existing).Error
+	if err == nil {
 		response.Fail(konteks, 409, "email sudah terdaftar, harap login alih alih registrasi", map[string]string{
 			"body": "email registered",
 		})
 		return
 	}
-
-	// password sanitation
-
-	if hashed_password, err := hashingPassword.HashPassword(input.Password); err != nil {
-		response.Fail(konteks, 500, "mohon maaf ada kesalahan di sisi kami", map[string]string{
-			"body": err.Error(),
-		})
-		return
-	} else {
-		payload = migrations.User{
-			Name:         input.Name,
-			Email:        input.Email,
-			PasswordHash: hashed_password,
-		}
-	}
-
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&payload).Error; err != nil {
-		response.Fail(konteks, 500, "gagal membuat user", map[string]string{
-			"body": err.Error(),
-		})
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		response.ServerError(konteks, err)
 		return
 	}
 
-	response.Created(konteks, "registrasi berhasil, sekarang harap login", payload)
-	return
-	/*
-		response.Created(konteks, "Registrasi berhasil!", map[string]string{
-			"Name": input.Name,
-			"Email": input.Email,
-		})
+	hashed, err := hashingPassword.HashPassword(input.Password)
+	if err != nil {
+		response.ServerError(konteks, err)
 		return
-	*/
+	}
 
-	//email verification
-	/*
-		email_admin := os.Getenv("SMTP_USER")
-		email_pass := os.Getenv("SMTP_PASS")
-		email_host := os.Getenv("SMTP_HOST")
-		e := &email.Email{
-			To:      []string{input.Email},
-			From:    fmt.Sprintf("Admin Stoodify <%s>", email_admin),
-			Subject: "Verifikasi Pembuatan akun Stoodify",
-			HTML:    []byte("<h1>abc</h1>"),
-			Headers: textproto.MIMEHeader{},
-		}
+	user := migrations.User{
+		Name:         input.Name,
+		Email:        input.Email,
+		PasswordHash: hashed,
+		Role:         migrations.RoleStudent,
+	}
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&user).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
 
-		if err := e.Send(fmt.Sprintf("%s:587", email_host), smtp.PlainAuth("", email_admin, email_pass, email_host)); err == nil {
-			response.OK(konteks, "wokeh udah terkirim, coba cek!", map[string]string{
-				"adalah": "adalahhhh",
-			})
-			return
-		} else {
-			response.Fail(konteks, 400, "gagal", map[string]string{
-				"adalah": "oioioi",
-			})
-			log.Fatalf("gagal nih %v", err)
-			return
-		}
-	*/
-	// etc
+	response.Created(konteks, "registrasi berhasil, sekarang harap login", user)
 }
 
 func (ctrl *AuthController) Login(konteks *gin.Context) {
@@ -148,23 +102,18 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 	var user migrations.User
 
 	if err := konteks.ShouldBindJSON(&input); err != nil {
-		response.BadRequest(konteks, "Body request tidak valid", map[string]string{
-			"body": err.Error(),
-		})
+		response.ValidationError(konteks, err)
 		return
 	}
 
 	email := normalizeEmail(input.Email)
-
 	err := ctrl.DB.WithContext(konteks.Request.Context()).Where("email = ?", email).First(&user).Error
 
 	// email tidak ketemu & password salah dibalas pesan identik (401), supaya
 	// penyerang tidak bisa menebak email mana yang terdaftar.
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			response.Fail(konteks, 500, "mohon maaf ada kesalahan di sisi kami", map[string]string{
-				"body": err.Error(),
-			})
+			response.ServerError(konteks, err)
 			return
 		}
 		hashingPassword.CheckPasswordHash(input.Password, dummyHash)
@@ -177,28 +126,115 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 		return
 	}
 
-	accessToken, err := token.Generate(user.ID)
+	access, refresh, err := ctrl.issueTokens(konteks, user.ID)
 	if err != nil {
-		response.Fail(konteks, 500, "mohon maaf ada kesalahan di sisi kami", map[string]string{
-			"body": err.Error(),
-		})
+		response.ServerError(konteks, err)
 		return
 	}
 
-	response.OK(konteks, "login berhasil", map[string]interface{}{
-		"access_token": accessToken,
-		"token_type":   "Bearer",
-		"expires_in":   int(token.ExpireDuration.Seconds()),
-		"user":         user,
+	response.OK(konteks, "login berhasil", gin.H{
+		"access_token":  access.Token,
+		"refresh_token": refresh.Token,
+		"token_type":    "Bearer",
+		"expires_in":    int(token.AccessTTL.Seconds()),
+		"user":          user,
 	})
 }
 
-// Me — memastikan token masih valid; butuh middleware RequireAuth.
-func (ctrl *AuthController) Me(konteks *gin.Context) {
-	user, ok := middlewares.CurrentUser(konteks)
-	if !ok {
-		response.Unauthorized(konteks, "token tidak valid")
+// Refresh menukar refresh token lama dengan pasangan token baru (rotasi).
+func (ctrl *AuthController) Refresh(konteks *gin.Context) {
+	var input RefreshInput
+
+	if err := konteks.ShouldBindJSON(&input); err != nil {
+		response.ValidationError(konteks, err)
 		return
 	}
-	response.OK(konteks, "data user", user)
+
+	userID, _, err := token.Parse(input.RefreshToken, token.TypeRefresh)
+	if err != nil {
+		response.Unauthorized(konteks, "refresh token tidak valid atau sudah kedaluwarsa")
+		return
+	}
+
+	var stored migrations.RefreshToken
+	err = ctrl.DB.WithContext(konteks.Request.Context()).
+		Where("token_hash = ?", token.Hash(input.RefreshToken)).First(&stored).Error
+	if err != nil || stored.RevokedAt != nil || stored.UserID != userID || stored.ExpiresAt.Before(time.Now()) {
+		response.Unauthorized(konteks, "refresh token sudah tidak berlaku")
+		return
+	}
+
+	var user migrations.User
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).First(&user, userID).Error; err != nil {
+		response.Unauthorized(konteks, "user dari token tidak ditemukan")
+		return
+	}
+
+	// Rotasi: token lama langsung dicabut; kalau gagal, jangan terbitkan yang baru.
+	now := time.Now()
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).Model(&stored).Update("revoked_at", now).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	access, refresh, err := ctrl.issueTokens(konteks, user.ID)
+	if err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	response.OK(konteks, "token diperbarui", gin.H{
+		"access_token":  access.Token,
+		"refresh_token": refresh.Token,
+		"token_type":    "Bearer",
+		"expires_in":    int(token.AccessTTL.Seconds()),
+	})
+}
+
+// Logout mencabut refresh token milik user (idempotent).
+func (ctrl *AuthController) Logout(konteks *gin.Context) {
+	user := middlewares.MustUser(konteks)
+
+	var input RefreshInput
+	// Body opsional: kalau dikirim, cabut token itu saja.
+	if err := konteks.ShouldBindJSON(&input); err == nil && input.RefreshToken != "" {
+		ctrl.DB.WithContext(konteks.Request.Context()).
+			Model(&migrations.RefreshToken{}).
+			Where("user_id = ? AND token_hash = ? AND revoked_at IS NULL", user.ID, token.Hash(input.RefreshToken)).
+			Update("revoked_at", time.Now())
+		response.OK(konteks, "logout berhasil", nil)
+		return
+	}
+
+	ctrl.DB.WithContext(konteks.Request.Context()).
+		Model(&migrations.RefreshToken{}).
+		Where("user_id = ? AND revoked_at IS NULL", user.ID).
+		Update("revoked_at", time.Now())
+
+	response.OK(konteks, "logout berhasil", nil)
+}
+
+func (ctrl *AuthController) Me(konteks *gin.Context) {
+	response.OK(konteks, "data user", middlewares.MustUser(konteks))
+}
+
+func (ctrl *AuthController) issueTokens(konteks *gin.Context, userID uint) (token.Issued, token.Issued, error) {
+	access, err := token.GenerateAccess(userID)
+	if err != nil {
+		return token.Issued{}, token.Issued{}, err
+	}
+	refresh, err := token.GenerateRefresh(userID)
+	if err != nil {
+		return token.Issued{}, token.Issued{}, err
+	}
+
+	record := migrations.RefreshToken{
+		UserID:    userID,
+		TokenHash: token.Hash(refresh.Token),
+		ExpiresAt: refresh.ExpiresAt,
+	}
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&record).Error; err != nil {
+		return token.Issued{}, token.Issued{}, err
+	}
+	return access, refresh, nil
 }

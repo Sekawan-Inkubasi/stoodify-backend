@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
+	"stoodify_backend/config"
 	"stoodify_backend/internal/response"
 	"stoodify_backend/internal/token"
 	"stoodify_backend/migrations"
@@ -13,7 +13,7 @@ import (
 
 const ContextUserKey = "auth_user"
 
-func RequireAuth(db *gorm.DB) gin.HandlerFunc {
+func RequireAuth() gin.HandlerFunc {
 	return func(konteks *gin.Context) {
 		bearer, ok := strings.CutPrefix(konteks.GetHeader("Authorization"), "Bearer ")
 		if !ok || bearer == "" {
@@ -22,7 +22,7 @@ func RequireAuth(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		userID, err := token.Parse(bearer)
+		userID, _, err := token.Parse(bearer, token.TypeAccess)
 		if err != nil {
 			response.Unauthorized(konteks, "token tidak valid atau sudah kedaluwarsa")
 			konteks.Abort()
@@ -30,7 +30,7 @@ func RequireAuth(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var user migrations.User
-		if err := db.WithContext(konteks.Request.Context()).First(&user, userID).Error; err != nil {
+		if err := config.DB.WithContext(konteks.Request.Context()).First(&user, userID).Error; err != nil {
 			response.Unauthorized(konteks, "user dari token tidak ditemukan")
 			konteks.Abort()
 			return
@@ -41,11 +41,39 @@ func RequireAuth(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// RequireRole: role-based access. Role diambil dari token (di-set RequireAuth).
+func RequireRole(roles ...string) gin.HandlerFunc {
+	allowed := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		allowed[r] = true
+	}
+	return func(konteks *gin.Context) {
+		user, ok := CurrentUser(konteks)
+		if !ok {
+			response.Unauthorized(konteks, "token tidak valid")
+			konteks.Abort()
+			return
+		}
+		if !allowed[user.Role] {
+			response.Forbidden(konteks, "role tidak diizinkan mengakses endpoint ini")
+			konteks.Abort()
+			return
+		}
+		konteks.Next()
+	}
+}
+
 func CurrentUser(konteks *gin.Context) (migrations.User, bool) {
-	user, ok := konteks.Get(ContextUserKey)
+	raw, ok := konteks.Get(ContextUserKey)
 	if !ok {
 		return migrations.User{}, false
 	}
-	casted, ok := user.(migrations.User)
-	return casted, ok
+	user, ok := raw.(migrations.User)
+	return user, ok
+}
+
+// MustUser: dipakai handler yang sudah pasti lewat RequireAuth.
+func MustUser(konteks *gin.Context) migrations.User {
+	user, _ := CurrentUser(konteks)
+	return user
 }
