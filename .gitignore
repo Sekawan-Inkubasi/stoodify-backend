@@ -1,0 +1,19 @@
+# dependency
+/vendor/
+
+# hasil build
+/stoodify_backend
+*.exe
+*.test
+*.out
+
+# secrets — jangan pernah commit
+.env
+.env.*
+!.env.example
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
+genhash_tmp.go
