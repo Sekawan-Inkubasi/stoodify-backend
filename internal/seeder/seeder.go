@@ -1,7 +1,6 @@
-package main
+package seeder
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"math/rand/v2"
@@ -10,49 +9,52 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"stoodify_backend/config"
-	"stoodify_backend/internal/hashing_password"
+	hashingPassword "stoodify_backend/internal/hashing_password"
 	"stoodify_backend/internal/priority"
 	"stoodify_backend/migrations"
 )
 
 // Seeder Stoodify — mengisi database dengan banyak data sintetis untuk uji
 // Mobile Dev / demo. Semua data memakai domain email @stoodify.seed sehingga
-// tidak tercampur dengan akun asli dan bisa dihapus bersih dengan -reset.
+// tidak tercampur dengan akun asli dan bisa dihapus bersih dengan Reset=true.
 //
-// Cara pakai:
+// Pemakaian dari CLI:
 //
-//	go run ./seeder -users 50 -tasks 40          # default
-//	go run ./seeder -users 200 -tasks 100        # skala super besar
-//	go run ./seeder -users 50 -tasks 40 -reset   # hapus data seed lama dulu
+//	./stoodify seed --users=50 --tasks=40 --reset
+//	./stoodify seed --users=200 --tasks=100
+//	./stoodify migrate --seed
+//
+// Pemakaian dari Go (mis. test):
+//
+//	seeder.Run(db, seeder.Config{Users: 10, Tasks: 5, Reset: true, Quiet: true})
 
 const seedDomain = "@stoodify.seed"
 
-var (
-	numUsers   = flag.Int("users", 50, "jumlah user siswa")
-	numTasks   = flag.Int("tasks", 40, "jumlah tugas per user")
-	doReset    = flag.Bool("reset", false, "hapus semua data seed sebelum mengisi")
-	noProgress = flag.Bool("quiet", false, "jangan cetak progres per tahap")
-)
+// Config mengatur perilaku seeder. Nilai nol = default aman.
+type Config struct {
+	Users int  // jumlah user siswa
+	Tasks int  // jumlah tugas per user
+	Reset bool // hapus semua data seed lama sebelum mengisi
+	Quiet bool // sembunyikan progres per tahap
+}
 
-func main() {
-	flag.Parse()
-	if *numUsers < 1 || *numTasks < 1 {
+// Run menjalankan seeder. db wajib sudah terkoneksi.
+func Run(db *gorm.DB, cfg Config) {
+	if cfg.Users < 1 || cfg.Tasks < 1 {
 		log.Fatal("users dan tasks harus >= 1")
 	}
 
-	db := config.KonekKeDB()
-	// Default gorm logger mencetak tiap query >200ms; seeder = ribuan INSERT, jadi dibisukan.
+	// Default gorm logger mencetak tiap query >200ms; seeder = ribuan INSERT.
 	db.Logger = logger.Default.LogMode(logger.Silent)
 	start := time.Now()
 
-	if *doReset {
+	if cfg.Reset {
 		resetSeedData(db)
 		log.Println("data seed lama dihapus")
 	}
 
 	now := time.Now()
-	rng := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), uint64(*numUsers)))
+	rng := rand.New(rand.NewPCG(uint64(now.UnixNano()), uint64(cfg.Users)))
 
 	// bcrypt cost 14 lambat: hash sekali, dipakai semua user.
 	passHash, err := hashingPassword.HashPassword("rahasia123")
@@ -60,7 +62,7 @@ func main() {
 		log.Fatalf("gagal hash password: %v", err)
 	}
 
-	users := seedUsers(db, rng, passHash)
+	users := seedUsers(db, rng, passHash, cfg.Users)
 	log.Printf("user: %d dibuat", len(users))
 
 	var totalSubjects, totalSchedules, totalTasks, totalSubtasks int
@@ -69,7 +71,7 @@ func main() {
 	for i, user := range users {
 		subjects := seedSubjects(db, rng, user.ID)
 		schedules := seedSchedules(db, rng, user.ID, subjects)
-		tasks := seedTasks(db, rng, user.ID, subjects, now)
+		tasks := seedTasks(db, rng, user.ID, subjects, now, cfg.Tasks)
 		subtasks := seedSubtasks(db, rng, tasks)
 		activities := seedActivities(db, rng, user.ID)
 		sessions := seedSessions(db, rng, user.ID, tasks, now)
@@ -85,29 +87,29 @@ func main() {
 		totalNotifs += len(notifs)
 		totalPreds += len(preds)
 
-		if !*noProgress && (i+1)%10 == 0 {
+		if !cfg.Quiet && (i+1)%10 == 0 {
 			log.Printf("progres: %d/%d user...", i+1, len(users))
 		}
 	}
 
 	log.Printf("selesai dalam %s", time.Since(start).Round(time.Millisecond))
 	fmt.Printf("\n=== RINGKASAN SEED ===\n")
-	fmt.Printf("users        : %d\n", len(users))
-	fmt.Printf("preferences  : %d\n", len(users))
-	fmt.Printf("subjects     : %d\n", totalSubjects)
-	fmt.Printf("schedules    : %d\n", totalSchedules)
-	fmt.Printf("tasks        : %d\n", totalTasks)
-	fmt.Printf("subtasks     : %d\n", totalSubtasks)
-	fmt.Printf("activities   : %d\n", totalActivities)
+	fmt.Printf("users         : %d\n", len(users))
+	fmt.Printf("preferences   : %d\n", len(users))
+	fmt.Printf("subjects      : %d\n", totalSubjects)
+	fmt.Printf("schedules     : %d\n", totalSchedules)
+	fmt.Printf("tasks         : %d\n", totalTasks)
+	fmt.Printf("subtasks      : %d\n", totalSubtasks)
+	fmt.Printf("activities    : %d\n", totalActivities)
 	fmt.Printf("study_sessions: %d\n", totalSessions)
-	fmt.Printf("notifications: %d\n", totalNotifs)
-	fmt.Printf("predictions  : %d\n", totalPreds)
-	fmt.Printf("total baris  : %d\n",
+	fmt.Printf("notifications : %d\n", totalNotifs)
+	fmt.Printf("predictions   : %d\n", totalPreds)
+	fmt.Printf("total baris   : %d\n",
 		len(users)*2+totalSubjects+totalSchedules+totalTasks+totalSubtasks+
 			totalActivities+totalSessions+totalNotifs+totalPreds)
 	fmt.Printf("\nAkun uji:\n")
-	fmt.Printf("  admin  : admin@stoodify.seed / admin123\n")
-	fmt.Printf("  siswa  : user001@stoodify.seed s.d. user%03d@stoodify.seed / rahasia123\n", *numUsers)
+	fmt.Printf("  admin  : admin@stoodify.seed / rahasia123\n")
+	fmt.Printf("  siswa  : user001@stoodify.seed s.d. user%03d@stoodify.seed / rahasia123\n", cfg.Users)
 }
 
 // resetSeedData menghapus semua baris milik user berdomain @stoodify.seed.
@@ -133,34 +135,56 @@ func resetSeedData(db *gorm.DB) {
 	}
 }
 
-var firstName = []string{"Adi", "Bima", "Citra", "Dimas", "Elsa", "Fajar", "Gita", "Hendra",
-	"Intan", "Joko", "Kirana", "Lutfi", "Maya", "Nando", "Olivia", "Putra", "Qori", "Rina",
-	"Satria", "Tari", "Umar", "Vina", "Wahyu", "Xena", "Yusuf", "Zahra"}
+// ==================== DATA STATIS ====================
 
-var lastName = []string{"Pratama", "Wijaya", "Saputra", "Hidayat", "Kurniawan", "Nugroho",
-	"Ramadhan", "Santoso", "Utami", "Wulandari", "Yanti", "Susanto", "Halim", "Anggraini",
-	"Firmansyah", "Handayani", "Maulana", "Purnama"}
-
-var subjectNames = []string{"Matematika", "Fisika", "Kimia", "Biologi", "Bahasa Indonesia",
-	"Bahasa Inggris", "Sejarah", "Geografi", "Ekonomi", "Informatika", "Seni Budaya", "PJOK"}
-
-var colors = []string{"#FF5252", "#FF9800", "#FFC107", "#4CAF50", "#00BCD4", "#2196F3",
-	"#3F51B5", "#9C27B0", "#E91E63", "#795548", "#607D8B", "#F44336"}
-
-type titleTpl struct {
-	a, b string
+var firstName = []string{
+	"Adi", "Bima", "Citra", "Dimas", "Elsa", "Fajar", "Gita", "Hendra",
+	"Intan", "Joko", "Kirana", "Lutfi", "Maya", "Nando", "Olivia", "Putra",
+	"Qori", "Rina", "Satria", "Tari", "Umar", "Vina", "Wahyu", "Xena",
+	"Yusuf", "Zahra",
 }
 
+var lastName = []string{
+	"Pratama", "Wijaya", "Saputra", "Hidayat", "Kurniawan", "Nugroho",
+	"Ramadhan", "Santoso", "Utami", "Wulandari", "Yanti", "Susanto",
+	"Halim", "Anggraini", "Firmansyah", "Handayani", "Maulana", "Purnama",
+}
+
+var subjectNames = []string{
+	"Matematika", "Fisika", "Kimia", "Biologi", "Bahasa Indonesia",
+	"Bahasa Inggris", "Sejarah", "Geografi", "Ekonomi", "Informatika",
+	"Seni Budaya", "PJOK",
+}
+
+var colors = []string{
+	"#FF5252", "#FF9800", "#FFC107", "#4CAF50", "#00BCD4", "#2196F3",
+	"#3F51B5", "#9C27B0", "#E91E63", "#795548", "#607D8B", "#F44336",
+}
+
+type titleTpl struct{ a, b string }
+
 var taskTemplates = []titleTpl{
-	{"PR ", " halaman 1-10"}, {"Latihan Soal ", " bab 3"}, {"Rangkuman ", " bab 4"},
-	{"Proyek ", " kelompok"}, {"Ujian Harian ", " bab 2"}, {"Tugas Baca ", " artikel 1"},
-	{"Portofolio ", " semester"}, {"Membuat Mind Map ", " bab 5"}, {"Presentasi ", " kelompok"},
+	{"PR ", " halaman 1-10"},
+	{"Latihan Soal ", " bab 3"},
+	{"Rangkuman ", " bab 4"},
+	{"Proyek ", " kelompok"},
+	{"Ujian Harian ", " bab 2"},
+	{"Tugas Baca ", " artikel 1"},
+	{"Portofolio ", " semester"},
+	{"Membuat Mind Map ", " bab 5"},
+	{"Presentasi ", " kelompok"},
 	{"Soal Ulangan ", " bab 6"},
 }
 
 var activityTemplates = []titleTpl{
-	{"Latihan ", " Basket"}, {"Les ", " Bahasa Inggris"}, {"Ekskul ", " Pramuka"}, {"Ibadah ", " Rutin"},
-	{"Latihan ", " Futsal"}, {"Ekstra ", " Robotik"}, {"Kursus ", " Menggambar"}, {"Belajar ", " Piano"},
+	{"Latihan ", " Basket"},
+	{"Les ", " Bahasa Inggris"},
+	{"Ekskul ", " Pramuka"},
+	{"Ibadah ", " Rutin"},
+	{"Latihan ", " Futsal"},
+	{"Ekstra ", " Robotik"},
+	{"Kursus ", " Menggambar"},
+	{"Belajar ", " Piano"},
 }
 
 var reasonTpl = []string{
@@ -170,6 +194,8 @@ var reasonTpl = []string{
 	"Ujian %s sudah dekat, alokasikan waktu belajar ekstra",
 	"Tugas ini termasuk prioritas %.0f dari 100, kerjakan lebih dulu",
 }
+
+// ==================== HELPER ====================
 
 // buildReason memilih template lalu mengisi hanya placeholder yang cocok,
 // supaya tidak muncul "%!(EXTRA ...)" saat Sprintf.
@@ -202,8 +228,10 @@ func hhmm(minutes int) string {
 	return fmt.Sprintf("%02d:%02d", (minutes/60)%24, minutes%60)
 }
 
+// ==================== SEEDERS ====================
+
 // seedUsers membuat admin + guru + user siswa dengan preferensi masing-masing.
-func seedUsers(db *gorm.DB, rng *rand.Rand, passHash string) []migrations.User {
+func seedUsers(db *gorm.DB, rng *rand.Rand, passHash string, numUsers int) []migrations.User {
 	admin := migrations.User{
 		Name: "Admin Stoodify", Email: "admin" + seedDomain,
 		PasswordHash: passHash, Role: migrations.RoleAdmin,
@@ -220,12 +248,26 @@ func seedUsers(db *gorm.DB, rng *rand.Rand, passHash string) []migrations.User {
 		})
 	}
 
-	for i := 0; i < *numUsers; i++ {
+	majors := []string{"Sistem Informasi Jaringan Aplikasi", "Teknik Jaringan Akses Telekomunikasi"}
+
+	for i := 0; i < numUsers; i++ {
+		major := pick(rng, majors)
+
+		var grade int
+		if major == majors[0] {
+			grade = intRange(rng, 10, 13)
+		} else if major == majors[1] {
+			grade = intRange(rng, 10, 12)
+		}
+
 		users = append(users, migrations.User{
 			Name:         fmt.Sprintf("%s %s", pick(rng, firstName), pick(rng, lastName)),
 			Email:        fmt.Sprintf("user%03d%s", i+1, seedDomain),
 			PasswordHash: passHash,
 			Role:         migrations.RoleStudent,
+			School:       "SMK TELKOM SIDOARJO",
+			Grade:        int8(grade),
+			Major:        major,
 		})
 	}
 
@@ -312,12 +354,12 @@ func deadlineBucket(rng *rand.Rand) string {
 	}
 }
 
-func seedTasks(db *gorm.DB, rng *rand.Rand, userID uint, subjects []migrations.Subject, now time.Time) []migrations.Task {
+func seedTasks(db *gorm.DB, rng *rand.Rand, userID uint, subjects []migrations.Subject, now time.Time, numTasks int) []migrations.Task {
 	types := []string{"assignment", "exam", "project", "reading"}
-	tasks := make([]migrations.Task, 0, *numTasks)
+	tasks := make([]migrations.Task, 0, numTasks)
 	subjCount := len(subjects)
 
-	for i := 0; i < *numTasks; i++ {
+	for i := 0; i < numTasks; i++ {
 		subject := subjects[rng.IntN(subjCount)]
 		tpl := pick(rng, taskTemplates)
 
@@ -328,8 +370,8 @@ func seedTasks(db *gorm.DB, rng *rand.Rand, userID uint, subjects []migrations.S
 		case "today":
 			deadline = time.Date(now.Year(), now.Month(), now.Day(), intRange(rng, 8, 23), intRange(rng, 0, 59), 0, 0, now.Location())
 		case "tomorrow":
-			deadline = now.AddDate(0, 0, 1)
-			deadline = time.Date(deadline.Year(), deadline.Month(), deadline.Day(), intRange(rng, 8, 23), intRange(rng, 0, 59), 0, 0, now.Location())
+			d := now.AddDate(0, 0, 1)
+			deadline = time.Date(d.Year(), d.Month(), d.Day(), intRange(rng, 8, 23), intRange(rng, 0, 59), 0, 0, now.Location())
 		default:
 			deadline = now.AddDate(0, 0, intRange(rng, 2, 14))
 		}
@@ -572,8 +614,10 @@ func seedNotifications(db *gorm.DB, rng *rand.Rand, userID uint, tasks []migrati
 }
 
 func seedPredictions(db *gorm.DB, rng *rand.Rand, userID uint, subjects []migrations.Subject) []migrations.MaterialPrediction {
-	nextTopics := []string{"Integral Dasar", "Turunan Fungsi", "Reaksi Redoks", "Genetika", "Proklamasi",
-		"Persamaan Kuadrat", "Teks Eksposisi", "Termodinamika", "Vektor", "Stoikiometri"}
+	nextTopics := []string{
+		"Integral Dasar", "Turunan Fungsi", "Reaksi Redoks", "Genetika", "Proklamasi",
+		"Persamaan Kuadrat", "Teks Eksposisi", "Termodinamika", "Vektor", "Stoikiometri",
+	}
 	var preds []migrations.MaterialPrediction
 	for _, subject := range subjects {
 		for p := 0; p < intRange(rng, 1, 3); p++ {
