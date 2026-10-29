@@ -1,0 +1,32 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Lint and Vet (Go 1.27)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/src -w /src golang:1.27-alpine sh -c "gofmt -l . && go vet ./..."
+
+      - name: Test Docker Production Build
+        run: |
+          docker build -t stoodify-backend:test .
