@@ -1,0 +1,40 @@
+info:
+  name: Create Subject
+  type: http
+  seq: 2
+http:
+  method: POST
+  url: "{{baseUrl}}/subjects/"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "name": "Matematika Terapan",
+        "code": "MTK",
+        "teacher": "Pak Budi Santoso",
+        "color": "#3B82F6",
+        "accent_bg": "#EFF6FF",
+        "category": "Muatan Umum",
+        "difficulty": 4
+      }
+scripts:
+  res: |
+    if (res.body && res.body.data && res.body.data.id) {
+      bru.setEnvVar('subjectId', res.body.data.id);
+    }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Tambah mata pelajaran

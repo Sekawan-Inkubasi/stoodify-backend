@@ -1,0 +1,30 @@
+info:
+  name: Update Study Session
+  type: http
+  seq: 4
+http:
+  method: PATCH
+  url: "{{baseUrl}}/study-sessions/{{sessionId}}"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "actual_progress": 40,
+        "status": "completed"
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Update sesi belajar

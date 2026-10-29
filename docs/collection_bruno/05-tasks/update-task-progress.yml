@@ -1,0 +1,29 @@
+info:
+  name: Update Task Progress
+  type: http
+  seq: 8
+http:
+  method: PATCH
+  url: "{{baseUrl}}/tasks/{{taskId}}/progress"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "progress": 60
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Update progres tugas

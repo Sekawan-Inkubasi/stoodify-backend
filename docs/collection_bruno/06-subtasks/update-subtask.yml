@@ -1,0 +1,30 @@
+info:
+  name: Update Subtask
+  type: http
+  seq: 3
+http:
+  method: PATCH
+  url: "{{baseUrl}}/subtasks/{{subtaskId}}"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "title": "Membuat diagram topologi final",
+        "is_completed": true
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Update subtugas

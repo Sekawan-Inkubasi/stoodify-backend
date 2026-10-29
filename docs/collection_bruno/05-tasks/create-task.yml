@@ -1,0 +1,42 @@
+info:
+  name: Create Task
+  type: http
+  seq: 2
+http:
+  method: POST
+  url: "{{baseUrl}}/tasks/"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "subject_id": 1,
+        "title": "Laporan Praktikum Topologi Mesh",
+        "material_name": "Jaringan Komputer",
+        "description": "Praktik topologi mesh",
+        "task_type": "Praktik",
+        "assigned_date": "2026-10-29T07:00:00Z",
+        "deadline": "2026-11-02T23:59:00Z",
+        "difficulty": 4,
+        "estimated_duration": 120
+      }
+scripts:
+  res: |
+    if (res.body && res.body.data && res.body.data.id) {
+      bru.setEnvVar('taskId', res.body.data.id);
+    }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Tambah tugas baru

@@ -1,0 +1,40 @@
+info:
+  name: Create Schedule
+  type: http
+  seq: 2
+http:
+  method: POST
+  url: "{{baseUrl}}/schedules/"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "subject_id": 1,
+        "day_of_week": "Senin",
+        "start_time": "07:30",
+        "end_time": "09:00",
+        "room": "Lab Komputer 2",
+        "teacher": "Pak Budi",
+        "notes": "Bawa modul"
+      }
+scripts:
+  res: |
+    if (res.body && res.body.data && res.body.data.id) {
+      bru.setEnvVar('scheduleId', res.body.data.id);
+    }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Tambah jadwal pelajaran

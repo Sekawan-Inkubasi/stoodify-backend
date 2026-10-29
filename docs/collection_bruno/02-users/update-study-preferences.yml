@@ -1,0 +1,34 @@
+info:
+  name: Update Study Preferences
+  type: http
+  seq: 4
+http:
+  method: PATCH
+  url: "{{baseUrl}}/users/me/preferences"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "preferred_start_time": "19:00",
+        "preferred_end_time": "22:00",
+        "session_duration": 45,
+        "break_duration": 15,
+        "max_sessions_per_day": 3,
+        "active_days": "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday"
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Update preferensi belajar

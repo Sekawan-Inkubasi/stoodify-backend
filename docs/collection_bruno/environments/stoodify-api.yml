@@ -1,0 +1,35 @@
+name: "stoodify-api"
+variables:
+  - name: baseUrl
+    value: http://127.0.0.1:8080/api
+    description: Base URL API
+  - name: authToken
+    value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjEsInR5cCI6ImFjY2VzcyIsImV4cCI6MTc5MzMwMTI5NiwiaWF0IjoxNzkzMzAwMzk2LCJqdGkiOiIyMDJmMTFhYWVhYjE3NzA4Mjk4MDE5NmViM2M0NDNhZiJ9.UGBuKqPNKFnBgLwiRUttRzYdmDnwLnurDrkso9H_Ytw
+    description: Bearer Access Token
+  - name: refreshToken
+    value: 
+    description: Refresh Token
+  - name: subjectId
+    value: 1
+    description: Sample Subject ID
+  - name: scheduleId
+    value: 1
+    description: Sample Schedule ID
+  - name: taskId
+    value: 1
+    description: Sample Task ID
+  - name: subtaskId
+    value: 1
+    description: Sample Subtask ID
+  - name: activityId
+    value: 1
+    description: Sample Activity ID
+  - name: sessionId
+    value: 1
+    description: Sample Study Session ID
+  - name: recommendationId
+    value: 1
+    description: Sample Recommendation ID
+  - name: notificationId
+    value: 1
+    description: Sample Notification ID

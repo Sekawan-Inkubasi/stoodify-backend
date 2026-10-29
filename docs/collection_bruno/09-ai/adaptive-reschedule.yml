@@ -1,0 +1,26 @@
+info:
+  name: Adaptive Reschedule
+  type: http
+  seq: 5
+http:
+  method: POST
+  url: "{{baseUrl}}/ai/reschedule"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: "{}"
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Reschedule sesi tertinggal

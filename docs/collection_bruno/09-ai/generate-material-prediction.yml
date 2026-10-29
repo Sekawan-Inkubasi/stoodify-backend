@@ -1,0 +1,29 @@
+info:
+  name: Generate Material Prediction
+  type: http
+  seq: 6
+http:
+  method: POST
+  url: "{{baseUrl}}/ai/material-predictions/generate"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "subject_id": 1
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Generate prediksi materi AI

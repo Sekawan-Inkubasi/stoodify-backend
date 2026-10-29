@@ -1,0 +1,39 @@
+info:
+  name: Create Manual Study Session
+  type: http
+  seq: 2
+http:
+  method: POST
+  url: "{{baseUrl}}/study-sessions/"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "task_id": 1,
+        "session_date": "2026-10-30",
+        "start_time": "19:30",
+        "end_time": "20:15",
+        "duration": 45,
+        "target_progress": 50
+      }
+scripts:
+  res: |
+    if (res.body && res.body.data && res.body.data.id) {
+      bru.setEnvVar('sessionId', res.body.data.id);
+    }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Buat sesi belajar manual

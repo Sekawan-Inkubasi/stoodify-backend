@@ -1,0 +1,21 @@
+info:
+  name: Delete Activity
+  type: http
+  seq: 4
+http:
+  method: DELETE
+  url: "{{baseUrl}}/activities/{{activityId}}"
+  headers:
+    - name: Accept
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Hapus aktivitas

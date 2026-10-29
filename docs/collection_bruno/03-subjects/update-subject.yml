@@ -1,0 +1,31 @@
+info:
+  name: Update Subject
+  type: http
+  seq: 4
+http:
+  method: PATCH
+  url: "{{baseUrl}}/subjects/{{subjectId}}"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "name": "Matematika Terapan Lanjutan",
+        "color": "#2563EB",
+        "difficulty": 5
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Update mata pelajaran

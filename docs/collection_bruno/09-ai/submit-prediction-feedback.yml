@@ -1,0 +1,29 @@
+info:
+  name: Submit Prediction Feedback
+  type: http
+  seq: 8
+http:
+  method: POST
+  url: "{{baseUrl}}/ai/material-predictions/{{subjectId}}/feedback"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "feedback": "accurate"
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Beri feedback prediksi

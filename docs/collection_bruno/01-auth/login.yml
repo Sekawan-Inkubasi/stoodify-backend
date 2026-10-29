@@ -1,0 +1,34 @@
+info:
+  name: Login
+  type: http
+  seq: 2
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/login"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: none
+  body:
+    type: json
+    data: |
+      {
+        "email": "siswa.uji@stoodify.seed",
+        "password": "rahasia123"
+      }
+scripts:
+  res: |
+    if (res.body && res.body.data && res.body.data.tokens) {
+      bru.setEnvVar('authToken', res.body.data.tokens.access_token);
+      bru.setEnvVar('refreshToken', res.body.data.tokens.refresh_token);
+    }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Login pengguna dan menyimpan JWT
