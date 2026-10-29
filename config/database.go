@@ -16,13 +16,21 @@ import (
 var DB *gorm.DB
 
 func KonekKeDB() *gorm.DB {
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load(".env.local", ".env"); err != nil {
 		log.Println("INFO: .env file tidak ditemukan, pakai environment variables")
 	}
+	InitStorage()
+
 	var dsn string
 	dsn = NyariEnv("POSTGRES_URL", "")
 	if dsn == "" {
-		log.Fatalf("POSTGRES_URL masih kosong")
+		dsn = NyariEnv("DATABASE_URL", "")
+	}
+	if dsn == "" {
+		dsn = NyariEnv("DATABASE_URL_UNPOOLED", "")
+	}
+	if dsn == "" {
+		log.Fatalf("POSTGRES_URL atau DATABASE_URL masih kosong")
 		username := NyariEnv("USER_DB", "")
 		password := NyariEnv("PASS_DB", "")
 		netloc := NyariEnv("NETLOCATION_DB", "")
@@ -37,10 +45,6 @@ func KonekKeDB() *gorm.DB {
 	if DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{}); err != nil {
 		log.Fatalf("gagal membuka konneksi database %v", err)
 	}
-	/*DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatalf("gagal membuka koneksi database: %v", err)
-	}*/
 
 	if err := migrations.Migrate(DB); err != nil {
 		log.Fatalf("gagal menjalankan migrasi: %v", err)
@@ -48,12 +52,6 @@ func KonekKeDB() *gorm.DB {
 
 	log.Println("SUKSES TERHUBUNG KE DATABASE")
 	return DB
-
-	// harusnya ini bagus kalau misal POSTGRES_URLnya gaada tapi gw males jir
-	//
-	//	if dsn == "" {
-	//		log.Println("Databasenya gak nemu anjay")
-	//	}
 }
 
 func NyariEnv(key string, replace_value string) string {
