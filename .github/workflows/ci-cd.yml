@@ -1,0 +1,96 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          check-latest: true
+          cache: true
+
+      - name: Verify Module Dependencies
+        run: go mod verify
+
+      - name: Check Formatting (gofmt)
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following files are not formatted with gofmt:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+      - name: Run Go Vet
+        run: go vet ./...
+
+      - name: Build Go Binary
+        run: go build -v ./...
+
+      - name: Test Docker Build
+        run: |
+          docker build -t stoodify-backend:test .
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && secrets.VPS_HOST != ''
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            TARGET_DIR="${{ secrets.VPS_TARGET_DIR || '~/stoodify-backend' }}"
+            echo "Deploying to: $TARGET_DIR"
+
+            if [ ! -d "$TARGET_DIR" ]; then
+              echo "Error: Directory $TARGET_DIR does not exist. Please clone the repository first into $TARGET_DIR"
+              exit 1
+            fi
+
+            cd "$TARGET_DIR"
+
+            # Ambil commit terbaru dari branch main
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Pastikan file .env ada sebelum menjalankan compose
+            if [ ! -f ".env" ]; then
+              echo "WARNING: .env file not found. Copying from .env.example..."
+              cp .env.example .env
+            fi
+
+            # Rebuild image dan restart service (near-zero downtime)
+            docker compose up -d --build --remove-orphans
+
+            # Hapus image lama (dangling) untuk menghemat storage VPS
+            docker image prune -f
+
+            echo "Deployment completed successfully!"
