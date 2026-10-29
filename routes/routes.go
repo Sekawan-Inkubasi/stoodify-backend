@@ -10,6 +10,7 @@ import (
 
 func SetupRoutes() *gin.Engine {
 	r := gin.Default()
+	r.Use(middlewares.CORS())
 
 	// Inisialisasi Controllers (Inject DB)
 	authCtrl := ctrl.NewAuthController(config.DB)
