@@ -1,0 +1,1556 @@
+openapi: 3.0.3
+info:
+  title: Stoodify API
+  version: 1.0.0
+  description: 'REST API Stoodify — Asisten Belajar Berbasis AI untuk Siswa SMP/SMA/SMK.
+
+    Golang + Gin + GORM + Supabase PostgreSQL.'
+  contact:
+    name: Stoodify Team
+    url: https://github.com/Sekawan-Inkubasi/stoodify-backend
+servers:
+- url: http://localhost:8080/api
+  description: Local Development Server
+- url: /api
+  description: Current Host Relative
+tags:
+- name: Auth
+  description: Autentikasi & Manajemen Sesi JWT
+- name: Users
+  description: Profil Pengguna & Preferensi Waktu Belajar
+- name: Subjects
+  description: Mata Pelajaran
+- name: Schedules
+  description: Jadwal Pelajaran Sekolah & Deteksi Bentrok
+- name: Tasks
+  description: Tugas, Prioritas Otomatis, & Status
+- name: Subtasks
+  description: Pecahan Langkah Subtugas
+- name: Activities
+  description: Aktivitas Rutin (Ekskul, Les, Ibadah)
+- name: AI Bridge
+  description: Rekomendasi Jadwal & Prediksi Materi AI
+- name: Study Sessions
+  description: Sesi Belajar di Kalender
+- name: Notifications
+  description: Notifikasi Deadline (H-1 & H-0)
+- name: Statistics
+  description: Statistik & Ringkasan Progres Belajar
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Masukkan Access Token JWT (contoh: eyJhbGci...)'
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: operasi berhasil
+        data:
+          type: object
+        meta:
+          type: object
+    ApiError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: terjadi kesalahan
+        errors:
+          type: object
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Budi Santoso
+        email:
+          type: string
+          example: budi@mail.com
+        role:
+          type: string
+          enum:
+          - student
+          - teacher
+          - admin
+          example: student
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    UserPreference:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          example: 1
+        start_time:
+          type: string
+          example: '15:00'
+        end_time:
+          type: string
+          example: '21:00'
+        session_duration:
+          type: integer
+          example: 60
+        active_days:
+          type: string
+          example: 1,2,3,4,5
+    Subject:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Matematika
+        color:
+          type: string
+          example: '#FF5252'
+        difficulty:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+        created_at:
+          type: string
+          format: date-time
+    Schedule:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 1
+        subject_id:
+          type: integer
+          example: 1
+        day_of_week:
+          type: string
+          enum:
+          - Monday
+          - Tuesday
+          - Wednesday
+          - Thursday
+          - Friday
+          - Saturday
+          - Sunday
+          example: Monday
+        start_time:
+          type: string
+          example: 07:00
+        end_time:
+          type: string
+          example: 08:30
+        subject:
+          $ref: '#/components/schemas/Subject'
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 1
+        subject_id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: PR Integral
+        description:
+          type: string
+          example: Nomor 1-10 halaman 45
+        type:
+          type: string
+          enum:
+          - exam
+          - project
+          - assignment
+          - reading
+          example: assignment
+        deadline:
+          type: string
+          format: date-time
+          example: '2026-11-05T23:59:00+07:00'
+        difficulty:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        estimated_duration:
+          type: integer
+          example: 90
+        priority_score:
+          type: number
+          format: float
+          example: 87.4
+        status:
+          type: string
+          enum:
+          - pending
+          - in_progress
+          - done
+          - late
+          example: pending
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 0
+        is_snoozed:
+          type: boolean
+          example: false
+        notes:
+          type: string
+          example: Kerjakan di buku tugas
+        subtasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subtask'
+        subject:
+          $ref: '#/components/schemas/Subject'
+    Subtask:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        task_id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: Kerjakan nomor 1-5
+        is_completed:
+          type: boolean
+          example: false
+    Activity:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: Latihan Basket
+        start_time:
+          type: string
+          example: '16:00'
+        end_time:
+          type: string
+          example: '17:30'
+        recurrence:
+          type: string
+          enum:
+          - daily
+          - weekly
+          - monthly
+          - none
+          example: weekly
+    StudySession:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 1
+        task_id:
+          type: integer
+          example: 1
+        session_date:
+          type: string
+          format: date
+          example: '2026-10-30'
+        start_time:
+          type: string
+          example: '19:00'
+        duration:
+          type: integer
+          example: 60
+        target_progress:
+          type: integer
+          example: 30
+        status:
+          type: string
+          enum:
+          - planned
+          - completed
+          - skipped
+          example: planned
+        ai_generated:
+          type: boolean
+          example: true
+        reason:
+          type: string
+          example: Skor prioritas 87, deadline dekat
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 1
+        task_id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: Deadline besok
+        message:
+          type: string
+          example: Tugas PR Integral harus selesai besok
+        type:
+          type: string
+          enum:
+          - reminder
+          - warning
+          - late
+          example: reminder
+        scheduled_at:
+          type: string
+          format: date-time
+        is_read:
+          type: boolean
+          example: false
+    MaterialPrediction:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 1
+        subject_id:
+          type: integer
+          example: 1
+        predicted_material:
+          type: string
+          example: Turunan Fungsi Aljabar
+        confidence:
+          type: number
+          example: 85.5
+        reason:
+          type: string
+          example: Berdasarkan materi limit fungsi sebelumnya
+        prerequisites:
+          type: string
+          example: Limit Fungsi
+        preparation_suggestion:
+          type: string
+          example: Pahami rumus dasar turunan
+        user_feedback:
+          type: string
+          enum:
+          - accurate
+          - inaccurate
+paths:
+  /auth/register:
+    post:
+      tags:
+      - Auth
+      summary: Pendaftaran Siswa Baru
+      description: Mendaftar akun siswa baru. Role otomatis student.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - email
+              - password
+              - confirm_password
+              properties:
+                name:
+                  type: string
+                  example: Budi Santoso
+                email:
+                  type: string
+                  format: email
+                  example: budi@mail.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 6
+                  example: rahasia123
+                confirm_password:
+                  type: string
+                  format: password
+                  example: rahasia123
+      responses:
+        '201':
+          description: Registrasi berhasil, silakan login
+        '400':
+          description: Input tidak valid / email salah
+        '409':
+          description: Email sudah terdaftar
+        '422':
+          description: Konfirmasi password tidak cocok
+  /auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Login Siswa
+      description: Mengembalikan sepasang Access Token (15 menit) dan Refresh Token
+        (7 hari).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: budi@mail.com
+                password:
+                  type: string
+                  format: password
+                  example: rahasia123
+      responses:
+        '200':
+          description: Login berhasil, token diberikan
+        '400':
+          description: Body request tidak valid
+        '401':
+          description: Email atau password salah
+  /auth/refresh:
+    post:
+      tags:
+      - Auth
+      summary: Refresh Access Token
+      description: Menukar Refresh Token lama dengan pasangan Access Token dan Refresh
+        Token baru (Token Rotation).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+                  example: eyJhbGciOiJIUzI1NiIs...
+      responses:
+        '200':
+          description: Token berhasil diperbarui
+        '401':
+          description: Refresh token tidak valid atau sudah kedaluwarsa
+  /auth/me:
+    get:
+      tags:
+      - Auth
+      summary: Cek Sesi User Saat Ini
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Data user yang sedang login
+        '401':
+          description: Token tidak valid atau belum login
+  /auth/logout:
+    post:
+      tags:
+      - Auth
+      summary: Logout / Cabut Sesi
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  description: 'Opsional: jika diisi hanya mencabut token ini. Jika
+                    kosong mencabut seluruh sesi user.'
+                  example: eyJhbGciOiJIUzI1NiIs...
+      responses:
+        '200':
+          description: Logout berhasil
+  /users/me:
+    get:
+      tags:
+      - Users
+      summary: Ambil Profil Sendiri
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Profil user
+    patch:
+      tags:
+      - Users
+      summary: Update Profil Sendiri
+      security:
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Budi Santoso Baru
+      responses:
+        '200':
+          description: Profil diperbarui
+  /users/me/preferences:
+    get:
+      tags:
+      - Users
+      summary: Ambil Preferensi Belajar
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Preferensi belajar
+    patch:
+      tags:
+      - Users
+      summary: Update Preferensi Belajar
+      security:
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                start_time:
+                  type: string
+                  example: '15:00'
+                end_time:
+                  type: string
+                  example: '21:00'
+                session_duration:
+                  type: integer
+                  example: 60
+                active_days:
+                  type: string
+                  example: 1,2,3,4,5
+      responses:
+        '200':
+          description: Preferensi diperbarui
+  /subjects/:
+    get:
+      tags:
+      - Subjects
+      summary: Daftar Mata Pelajaran
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: search
+        in: query
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+          default: 20
+      responses:
+        '200':
+          description: Daftar mapel
+    post:
+      tags:
+      - Subjects
+      summary: Tambah Mata Pelajaran
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+                  example: Matematika
+                color:
+                  type: string
+                  example: '#FF5252'
+                difficulty:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  example: 4
+      responses:
+        '201':
+          description: Mapel berhasil dibuat
+  /subjects/{id}:
+    get:
+      tags:
+      - Subjects
+      summary: Detail Mata Pelajaran
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Detail mapel
+        '404':
+          description: Mapel tidak ditemukan
+    patch:
+      tags:
+      - Subjects
+      summary: Ubah Mata Pelajaran
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Matematika Wajib
+                color:
+                  type: string
+                  example: '#E53935'
+                difficulty:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  example: 4
+      responses:
+        '200':
+          description: Mapel diperbarui
+    delete:
+      tags:
+      - Subjects
+      summary: Hapus Mata Pelajaran
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Mapel berhasil dihapus
+  /schedules/:
+    get:
+      tags:
+      - Schedules
+      summary: Daftar Semua Jadwal
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Daftar jadwal
+    post:
+      tags:
+      - Schedules
+      summary: Tambah Jadwal (Auto Conflict Detection)
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - subject_id
+              - day_of_week
+              - start_time
+              - end_time
+              properties:
+                subject_id:
+                  type: integer
+                  example: 1
+                day_of_week:
+                  type: string
+                  enum:
+                  - Monday
+                  - Tuesday
+                  - Wednesday
+                  - Thursday
+                  - Friday
+                  - Saturday
+                  - Sunday
+                  example: Monday
+                start_time:
+                  type: string
+                  example: 07:00
+                end_time:
+                  type: string
+                  example: 08:30
+      responses:
+        '201':
+          description: Jadwal dibuat
+        '409':
+          description: Jadwal bentrok dengan jadwal lain di hari yang sama
+        '422':
+          description: Jam berakhir lebih awal dari jam mulai
+  /schedules/today:
+    get:
+      tags:
+      - Schedules
+      summary: Jadwal Hari Ini
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Jadwal hari ini
+  /schedules/week:
+    get:
+      tags:
+      - Schedules
+      summary: Jadwal Sepekan (Senin-Minggu)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Jadwal sepekan urut
+  /schedules/{id}:
+    patch:
+      tags:
+      - Schedules
+      summary: Ubah Jadwal
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                day_of_week:
+                  type: string
+                  example: Monday
+                start_time:
+                  type: string
+                  example: 07:30
+                end_time:
+                  type: string
+                  example: 09:00
+      responses:
+        '200':
+          description: Jadwal diperbarui
+        '409':
+          description: Bentrok
+    delete:
+      tags:
+      - Schedules
+      summary: Hapus Jadwal
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Jadwal dihapus
+  /tasks/:
+    get:
+      tags:
+      - Tasks
+      summary: Daftar Tugas dengan Filter & Urutan
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - pending
+          - in_progress
+          - done
+          - late
+      - name: subject_id
+        in: query
+        schema:
+          type: integer
+      - name: search
+        in: query
+        schema:
+          type: string
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - priority
+          - deadline
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+          default: 20
+      responses:
+        '200':
+          description: Daftar tugas
+    post:
+      tags:
+      - Tasks
+      summary: Tambah Tugas (Auto Hitung Priority Score)
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - subject_id
+              - title
+              - deadline
+              - difficulty
+              properties:
+                subject_id:
+                  type: integer
+                  example: 1
+                title:
+                  type: string
+                  example: PR Integral
+                description:
+                  type: string
+                  example: Nomor 1-10 halaman 45
+                type:
+                  type: string
+                  enum:
+                  - exam
+                  - project
+                  - assignment
+                  - reading
+                  example: exam
+                deadline:
+                  type: string
+                  format: date-time
+                  example: '2026-11-05T23:59:00+07:00'
+                difficulty:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  example: 5
+                estimated_duration:
+                  type: integer
+                  example: 90
+                notes:
+                  type: string
+                  example: Kerjakan di buku tugas
+      responses:
+        '201':
+          description: Tugas dibuat dengan Priority Score terhitung
+  /tasks/upcoming:
+    get:
+      tags:
+      - Tasks
+      summary: Tugas Mendekati Deadline (7 Hari ke Depan)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Daftar tugas upcoming
+  /tasks/overdue:
+    get:
+      tags:
+      - Tasks
+      summary: Tugas Terlambat (Overdue / Late)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Daftar tugas overdue
+  /tasks/{id}:
+    get:
+      tags:
+      - Tasks
+      summary: Detail Tugas (Termasuk Subtugas & Mapel)
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Detail tugas
+    patch:
+      tags:
+      - Tasks
+      summary: Ubah Tugas
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: PR Integral & Turunan
+                difficulty:
+                  type: integer
+                  example: 4
+      responses:
+        '200':
+          description: Tugas diperbarui
+    delete:
+      tags:
+      - Tasks
+      summary: Hapus Tugas
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Tugas dihapus
+  /tasks/{id}/status:
+    patch:
+      tags:
+      - Tasks
+      summary: Ubah Status Tugas
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                  - pending
+                  - in_progress
+                  - done
+                  - late
+                  example: in_progress
+      responses:
+        '200':
+          description: Status tugas diperbarui
+  /tasks/{id}/progress:
+    patch:
+      tags:
+      - Tasks
+      summary: Ubah Progres Tugas (0-100, 100 otomatis Done)
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - progress
+              properties:
+                progress:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                  example: 50
+      responses:
+        '200':
+          description: Progres tugas diperbarui
+  /tasks/{id}/subtasks/:
+    get:
+      tags:
+      - Subtasks
+      summary: Daftar Subtugas dari Sebuah Tugas
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Daftar subtugas
+    post:
+      tags:
+      - Subtasks
+      summary: Tambah Subtugas
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - title
+              properties:
+                title:
+                  type: string
+                  example: Kerjakan nomor 1-5
+      responses:
+        '201':
+          description: Subtugas dibuat
+  /subtasks/{id}:
+    patch:
+      tags:
+      - Subtasks
+      summary: Ubah Subtugas (Judul / Centang Selesai)
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: Kerjakan nomor 1-5
+                is_completed:
+                  type: boolean
+                  example: true
+      responses:
+        '200':
+          description: Subtugas diperbarui
+    delete:
+      tags:
+      - Subtasks
+      summary: Hapus Subtugas
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Subtugas dihapus
+  /activities/:
+    get:
+      tags:
+      - Activities
+      summary: Daftar Aktivitas Rutin
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Daftar aktivitas
+    post:
+      tags:
+      - Activities
+      summary: Tambah Aktivitas Rutin
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - title
+              - start_time
+              - end_time
+              properties:
+                title:
+                  type: string
+                  example: Latihan Basket
+                start_time:
+                  type: string
+                  example: '16:00'
+                end_time:
+                  type: string
+                  example: '17:30'
+                recurrence:
+                  type: string
+                  enum:
+                  - daily
+                  - weekly
+                  - monthly
+                  - none
+                  example: weekly
+      responses:
+        '201':
+          description: Aktivitas dibuat
+  /activities/{id}:
+    patch:
+      tags:
+      - Activities
+      summary: Ubah Aktivitas Rutin
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                start_time:
+                  type: string
+                  example: '16:30'
+                end_time:
+                  type: string
+                  example: '18:00'
+      responses:
+        '200':
+          description: Aktivitas diperbarui
+    delete:
+      tags:
+      - Activities
+      summary: Hapus Aktivitas
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Aktivitas dihapus
+  /ai/schedule-recommendations/generate:
+    post:
+      tags:
+      - AI Bridge
+      summary: Generate Rekomendasi Sesi Belajar (AI / Rule-based Fallback)
+      security:
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date:
+                  type: string
+                  format: date
+                  example: '2026-10-30'
+      responses:
+        '201':
+          description: Rekomendasi sesi belajar dibuat dan disimpan ke study_sessions
+  /ai/schedule-recommendations:
+    get:
+      tags:
+      - AI Bridge
+      summary: Daftar Rekomendasi Sesi Belajar
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Daftar rekomendasi sesi
+  /ai/schedule-recommendations/{id}/accept:
+    post:
+      tags:
+      - AI Bridge
+      summary: Terima Rekomendasi Jadwal
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Rekomendasi diterima (status planned)
+  /ai/schedule-recommendations/{id}/reject:
+    post:
+      tags:
+      - AI Bridge
+      summary: Tolak Rekomendasi Jadwal
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Rekomendasi ditolak (status skipped)
+  /ai/reschedule:
+    post:
+      tags:
+      - AI Bridge
+      summary: Reschedule Otomatis Sesi Terlewat Hari Ini
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Sesi terlewat berhasil dijadwal ulang
+  /ai/material-predictions/generate:
+    post:
+      tags:
+      - AI Bridge
+      summary: Generate Prediksi Materi Berikutnya
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - subject_id
+              properties:
+                subject_id:
+                  type: integer
+                  example: 1
+      responses:
+        '201':
+          description: Prediksi materi dibuat
+  /ai/material-predictions/{subjectId}:
+    get:
+      tags:
+      - AI Bridge
+      summary: Riwayat Prediksi Materi Berdasarkan Mapel
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subjectId
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Daftar prediksi materi
+  /ai/material-predictions/{id}/feedback:
+    post:
+      tags:
+      - AI Bridge
+      summary: Kirim Umpan Balik Prediksi Materi
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - feedback
+              properties:
+                feedback:
+                  type: string
+                  enum:
+                  - accurate
+                  - inaccurate
+                  example: accurate
+      responses:
+        '200':
+          description: Feedback tersimpan
+  /study-sessions/:
+    get:
+      tags:
+      - Study Sessions
+      summary: Daftar Sesi Belajar
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - planned
+          - completed
+          - skipped
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+          default: 20
+      responses:
+        '200':
+          description: Daftar sesi belajar
+  /study-sessions/today:
+    get:
+      tags:
+      - Study Sessions
+      summary: Sesi Belajar Hari Ini
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Sesi belajar hari ini
+  /study-sessions/{id}:
+    patch:
+      tags:
+      - Study Sessions
+      summary: Update / Reschedule Manual Sesi Belajar
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_date:
+                  type: string
+                  format: date
+                  example: '2026-10-31'
+                start_time:
+                  type: string
+                  example: '20:00'
+                duration:
+                  type: integer
+                  example: 45
+                status:
+                  type: string
+                  enum:
+                  - planned
+                  - completed
+                  - skipped
+      responses:
+        '200':
+          description: Sesi belajar diperbarui
+    delete:
+      tags:
+      - Study Sessions
+      summary: Hapus Sesi Belajar
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Sesi belajar dihapus
+  /notifications/:
+    get:
+      tags:
+      - Notifications
+      summary: Daftar Notifikasi
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: unread
+        in: query
+        schema:
+          type: boolean
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+          default: 20
+      responses:
+        '200':
+          description: Daftar notifikasi
+  /notifications/{id}/read:
+    patch:
+      tags:
+      - Notifications
+      summary: Tandai Satu Notifikasi Dibaca
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Notifikasi ditandai dibaca
+  /notifications/read-all:
+    patch:
+      tags:
+      - Notifications
+      summary: Tandai Semua Notifikasi Dibaca
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Semua notifikasi ditandai dibaca
+  /statistics/overview:
+    get:
+      tags:
+      - Statistics
+      summary: Ringkasan Statistik Dashboard
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Ringkasan tugas, on_time_rate, total_study_minutes, dll.
+  /statistics/weekly:
+    get:
+      tags:
+      - Statistics
+      summary: Statistik 7 Hari Terakhir
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Statistik mingguan
+  /statistics/monthly:
+    get:
+      tags:
+      - Statistics
+      summary: Statistik 30 Hari Terakhir
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Statistik bulanan
+  /statistics/subjects:
+    get:
+      tags:
+      - Statistics
+      summary: Rincian Statistik Per Mata Pelajaran
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Rincian tugas & rata-rata skor per mapel
