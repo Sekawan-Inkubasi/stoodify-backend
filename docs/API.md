@@ -32,8 +32,11 @@ POST /auth/register
 
 ```json
 {
-  "name": "Budi Santoso",
-  "email": "budi@mail.com",
+  "name": "Aliezzar",
+  "email": "liezzar@gmail.com",
+  "school": "SMK TELKOM SIDOARJO",
+  "grade": 10,
+  "major": "Teknik Komunikasi Jaringan",
   "password": "rahasia123",
   "confirm_password": "rahasia123"
 }
@@ -44,7 +47,17 @@ Sukses → **201**:
 {
   "success": true,
   "message": "registrasi berhasil, sekarang harap login",
-  "data": { "id": 1, "name": "Budi Santoso", "email": "budi@mail.com", "role": "student" }
+  "data": {
+    "id": 55,
+    "created_at": "2026-10-30T00:31:31.054221943+07:00",
+    "updated_at": "2026-10-30T00:31:31.054221943+07:00",
+    "name": "Aliezzar",
+    "email": "liezzar@gmail.com",
+    "role": "student",
+    "school": "SMK TELKOM SIDOARJO",
+    "grade": 10,
+    "major": "Teknik Komunikasi Jaringan"
+  }
 }
 ```
 
@@ -61,7 +74,7 @@ POST /auth/login
 ```
 
 ```json
-{ "email": "budi@mail.com", "password": "rahasia123" }
+{ "email": "liezzar@gmail.com", "password": "rahasia123" }
 ```
 
 Sukses → **200**:
@@ -70,11 +83,21 @@ Sukses → **200**:
   "success": true,
   "message": "login berhasil",
   "data": {
-    "access_token": "eyJhbGciOiJIUzI1NiIs...",
-    "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
-    "token_type": "Bearer",
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....",
     "expires_in": 900,
-    "user": { "id": 1, "name": "Budi Santoso", "email": "budi@mail.com", "role": "student" }
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....",
+    "token_type": "Bearer",
+    "user": {
+      "id": 55,
+      "created_at": "2026-10-30T00:31:31.054221+07:00",
+      "updated_at": "2026-10-30T00:31:31.054221+07:00",
+      "name": "Aliezzar",
+      "email": "liezzar@gmail.com",
+      "role": "student",
+      "school": "SMK TELKOM SIDOARJO",
+      "grade": 10,
+      "major": "Teknik Komunikasi Jaringan"
+    }
   }
 }
 ```

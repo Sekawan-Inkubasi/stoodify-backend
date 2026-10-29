@@ -1,51 +1,83 @@
 # Stoodify Backend
 
-REST API Stoodify — asisten belajar berbasis AI untuk siswa SMP/SMA/SMK. Golang + Gin + GORM + Supabase PostgreSQL.
+REST API Stoodify — asisten belajar harian berbasis kecerdasan buatan (AI) untuk siswa SMP, SMA, dan SMK di Indonesia. Dibangun dengan performa tinggi menggunakan Golang, Gin Web Framework, GORM, dan PostgreSQL (Supabase / Neon).
 
-## Menjalankan
+---
 
+## 🚀 Panduan Menjalankan
+
+### 1. Prasyarat & Setup Lingkungan
+Pastikan Anda telah menginstal Go versi 1.22+ dan PostgreSQL.
 ```bash
-cp .env.example .env      # lalu isi POSTGRES_URL & JWT_SECRET
+# Salin file konfigurasi environment
+cp .env.example .env
+# Isi kredensial POSTGRES_URL dan JWT_SECRET di dalam .env
+
+# Unduh dependensi modul
 go mod download
-go run .                  # http://localhost:8080
 ```
 
-Tabel + index dibuat otomatis saat boot (`AutoMigrate`), tidak perlu migrasi manual.
+Tabel dan indeks database akan dibuat secara otomatis saat boot aplikasi melalui mekanisme GORM `AutoMigrate`.
 
-## Isi Proyek
-
-```
-main.go            # boot: DB -> scheduler -> router -> listen (graceful shutdown)
-config/            # koneksi GORM ke Supabase
-routes/            # registrasi seluruh route + middleware
-controllers/       # HTTP layer (bind/validasi/respond, query via ctrl.DB)
-middlewares/       # RequireAuth (JWT), RequireRole (RBAC)
-migrations/        # model GORM + AutoMigrate + index kinerja
-workers/           # scheduler: auto-"late" + notifikasi H-1/H-0
-internal/token/    # JWT access 15m + refresh 7d (rotasi, hash di DB)
-internal/response/ # envelope sukses/error
-internal/priority/ # Priority Score Engine (formula PRD)
-internal/params/   # parsing id & pagination
-docs/API.md        # dokumentasi semua endpoint
-docs/DEPLOY.md     # deploy Railway/Render + Supabase
-```
-
-## Dokumentasi
-
-- Endpoint lengkap, request/response, kode error: [`docs/API.md`](docs/API.md)
-- Deploy production: [`docs/DEPLOY.md`](docs/DEPLOY.md)
-
-## Ringkas
-
-- **Auth** — JWT HS256, access 15 menit, refresh 7 hari dengan rotasi + pencabutan (logout). Password bcrypt cost 14.
-- **RBAC** — `RequireRole("admin", ...)` siap dipakai di route mana pun.
-- **Ownership** — setiap query difilter `user_id` dari token; milik user lain → 404.
-- **Priority Engine** — skor 0–100 dari deadline urgency, difficulty, duration, importance, late-risk, dikurangi progres.
-- **Scheduler** — ticker 1 menit: tugas lewat deadline → `late`, notifikasi H-1 & H-0 (idempotent per hari).
-- **AI Bridge** — kirim payload ke AI Specialist, validasi output, simpan ke DB; fallback rule-based bila AI gagal (>15 detik).
-
-## Verifikasi
-
+### 2. Menjalankan Server API
 ```bash
-go build ./... && go vet ./... && gofmt -l .   # semua harus bersih
+go run main.go serve       # Berjalan pada http://localhost:8080
+```
+
+### 3. Mengisi Data Awal (Seeder Demo)
+Untuk keperluan pengujian atau demo pameran, tersedia seeder data realistis (siswa, mapel, jadwal, tugas, sesi belajar, dan admin):
+```bash
+go run main.go seed        # Membuat data demo untuk 10 user uji
+```
+Akun default demo:
+- **Siswa Uji**: `siswa.uji@stoodify.seed` / `rahasia123`
+- **Admin**: `admin@stoodify.seed` / `rahasia123`
+
+---
+
+## 📁 Struktur Direktori
+
+```
+stoodify-backend/
+├── main.go            # Bootstrapping server, router, CLI commands (serve & seed)
+├── config/            # Inisialisasi koneksi GORM ke PostgreSQL
+├── controllers/       # HTTP Request Handlers (Bind, Validate, Controller logic)
+├── routes/            # Pendaftaran route API & middleware groups
+├── middlewares/       # RequireAuth (JWT Bearer), RequireRole (RBAC), CORS
+├── migrations/        # Model database GORM, tipe data, skema migrasi otomatis
+├── workers/           # Scheduler background: auto-late task updater & reminder
+├── internal/
+│   ├── hashing_password/ # Hashing password menggunakan bcrypt (cost 14)
+│   ├── params/           # Parser parameter URL dan pagination helper
+│   ├── priority/         # Priority Scoring Engine & Unit Tests formula PRD
+│   ├── response/         # Response envelope standar (OK, Created, Fail, Error)
+│   ├── seeder/           # Script seeder data uji realistis
+│   └── token/            # Generator & validator JWT Access Token dan Refresh Token
+└── docs/              # Dokumentasi lengkap arsitektur, API, ADR, dan panduan agen
+```
+
+---
+
+## 📚 Dokumentasi Lengkap
+
+- **Panduan untuk AI Agent**: [`docs/AGENTS.md`](docs/AGENTS.md)
+- **Katalog Lengkap Endpoint API**: [`docs/API.md`](docs/API.md)
+- **Kontrak Integrasi AI**: [`docs/AI_CONTRACT.md`](docs/AI_CONTRACT.md)
+- **Arsitektur Sistem**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- **Catatan Keputusan Desain (ADR)**: [`docs/DECISIONS.md`](docs/DECISIONS.md)
+- **Tech Stack & Direktori**: [`docs/STACK.md`](docs/STACK.md)
+- **Konvensi Kode**: [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md)
+- **Panduan Pengujian (Testing)**: [`docs/TESTING.md`](docs/TESTING.md)
+- **Troubleshooting & Known Errors**: [`docs/ERRORS.md`](docs/ERRORS.md)
+- **Status & Serah Terima**: [`docs/STATE.md`](docs/STATE.md)
+- **Daftar Tugas & Backlog**: [`docs/to-do.md`](docs/to-do.md)
+- **Panduan Deployment Production**: [`docs/DEPLOY.md`](docs/DEPLOY.md)
+
+---
+
+## 🧪 Verifikasi & Uji Kode
+
+Pastikan seluruh linter, unit test, dan kompilasi bersih sebelum melakukan commit:
+```bash
+go test -v ./... && go vet ./... && go build ./...
 ```
