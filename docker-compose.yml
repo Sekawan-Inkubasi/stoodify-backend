@@ -1,0 +1,48 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stoodify-backend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - TZ=Asia/Jakarta
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - stoodify-network
+
+  db:
+    image: postgres:16-alpine
+    container_name: stoodify-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-stoodify_password}
+      POSTGRES_DB: ${DB_NAME:-stoodify}
+      TZ: Asia/Jakarta
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-stoodify}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stoodify-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  stoodify-network:
+    driver: bridge

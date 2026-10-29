@@ -1,15 +1,93 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"stoodify_backend/config"
 	ctrl "stoodify_backend/controllers"
+	"stoodify_backend/docs"
 	"stoodify_backend/middlewares"
 )
 
+const scalarHTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <title>Stoodify API Documentation</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <script
+      id="api-reference"
+      data-url="/openapi.yaml"
+      data-configuration='{"theme":"purple","layout":"modern","hideModels":false,"searchHotKey":"k"}'></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>`
+
 func SetupRoutes() *gin.Engine {
 	r := gin.Default()
+	r.Use(middlewares.CORS())
+
+	// OpenAPI Spec & Scalar Interactive Documentation
+	openapiHandler := func(c *gin.Context) {
+		if c.Request.Method == http.MethodHead {
+			c.Header("Content-Type", "application/yaml; charset=utf-8")
+			c.Status(http.StatusOK)
+			return
+		}
+		c.Data(http.StatusOK, "application/yaml; charset=utf-8", docs.OpenAPISpec)
+	}
+	r.GET("/openapi.yaml", openapiHandler)
+	r.HEAD("/openapi.yaml", openapiHandler)
+
+	docsHandler := func(c *gin.Context) {
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		if c.Request.Method == http.MethodHead {
+			c.Status(http.StatusOK)
+			return
+		}
+		c.String(http.StatusOK, scalarHTML)
+	}
+	r.GET("/docs", docsHandler)
+	r.HEAD("/docs", docsHandler)
+
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "Stoodify AI Assistant Backend API",
+			"data": gin.H{
+				"status":     "online",
+				"version":    "1.0.0",
+				"api_base":   "/api",
+				"docs":       "/docs",
+				"repository": "https://github.com/Sekawan-Inkubasi/stoodify-backend",
+			},
+		})
+	})
+
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "healthy",
+			"service": "stoodify-backend",
+		})
+	})
+
+	r.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Endpoint tidak ditemukan. Semua endpoint API berada di bawah prefix /api",
+		})
+	})
 
 	// Inisialisasi Controllers (Inject DB)
 	authCtrl := ctrl.NewAuthController(config.DB)
@@ -27,6 +105,29 @@ func SetupRoutes() *gin.Engine {
 	// Base API Group
 	api := r.Group("/api")
 	{
+		api.GET("/", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": "Welcome to Stoodify API",
+				"data": gin.H{
+					"service": "stoodify-backend",
+					"status":  "healthy",
+					"endpoints": gin.H{
+						"auth":           "/api/auth",
+						"users":          "/api/users",
+						"subjects":       "/api/subjects",
+						"schedules":      "/api/schedules",
+						"tasks":          "/api/tasks",
+						"activities":     "/api/activities",
+						"ai":             "/api/ai",
+						"notifications":  "/api/notifications",
+						"study_sessions": "/api/study-sessions",
+						"statistics":     "/api/statistics",
+					},
+				},
+			})
+		})
+
 		// ==========================================
 		// 1. AUTH GROUP (Sebagian Public, Sebagian Protected)
 		// ==========================================

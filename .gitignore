@@ -17,3 +17,5 @@
 .vscode/
 .DS_Store
 genhash_tmp.go
+.neon
+node_modules/
