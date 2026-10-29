@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"stoodify_backend/config"
@@ -11,6 +13,34 @@ import (
 func SetupRoutes() *gin.Engine {
 	r := gin.Default()
 	r.Use(middlewares.CORS())
+
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "Stoodify AI Assistant Backend API",
+			"data": gin.H{
+				"status":     "online",
+				"version":    "1.0.0",
+				"api_base":   "/api",
+				"docs":       "/api",
+				"repository": "https://github.com/Sekawan-Inkubasi/stoodify-backend",
+			},
+		})
+	})
+
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "healthy",
+			"service": "stoodify-backend",
+		})
+	})
+
+	r.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Endpoint tidak ditemukan. Semua endpoint API berada di bawah prefix /api",
+		})
+	})
 
 	// Inisialisasi Controllers (Inject DB)
 	authCtrl := ctrl.NewAuthController(config.DB)
@@ -28,6 +58,29 @@ func SetupRoutes() *gin.Engine {
 	// Base API Group
 	api := r.Group("/api")
 	{
+		api.GET("/", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": "Welcome to Stoodify API",
+				"data": gin.H{
+					"service": "stoodify-backend",
+					"status":  "healthy",
+					"endpoints": gin.H{
+						"auth":           "/api/auth",
+						"users":          "/api/users",
+						"subjects":       "/api/subjects",
+						"schedules":      "/api/schedules",
+						"tasks":          "/api/tasks",
+						"activities":     "/api/activities",
+						"ai":             "/api/ai",
+						"notifications":  "/api/notifications",
+						"study_sessions": "/api/study-sessions",
+						"statistics":     "/api/statistics",
+					},
+				},
+			})
+		})
+
 		// ==========================================
 		// 1. AUTH GROUP (Sebagian Public, Sebagian Protected)
 		// ==========================================
