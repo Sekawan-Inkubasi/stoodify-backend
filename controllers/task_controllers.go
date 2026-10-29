@@ -9,6 +9,7 @@ import (
 	"stoodify_backend/internal/params"
 	"stoodify_backend/internal/response"
 	"stoodify_backend/migrations"
+	"stoodify_backend/internal/priority"
 )
 
 type TaskController struct {
@@ -22,6 +23,7 @@ func NewTaskController(db *gorm.DB) *TaskController {
 type TaskInput struct {
 	SubjectID         uint      `json:"subject_id" binding:"required"`
 	Title             string    `json:"title" binding:"required,min=1,max=200"`
+	MaterialName      string    `json:"material_name" binding:"omitempty,max=100"`
 	Description       string    `json:"description" binding:"omitempty,max=2000"`
 	Type              string    `json:"type" binding:"omitempty,oneof=exam project assignment reading"`
 	Deadline          time.Time `json:"deadline" binding:"required"`
@@ -29,6 +31,28 @@ type TaskInput struct {
 	EstimatedDuration int       `json:"estimated_duration" binding:"omitempty,min=5,max=1440"`
 	Notes             string    `json:"notes" binding:"omitempty,max=2000"`
 }
+
+type TaskResponse struct {
+	migrations.Task
+	PriorityBreakdown *priority.Breakdown `json:"priority_breakdown,omitempty"`
+}
+
+func toTaskResponse(task migrations.Task, budget int) TaskResponse {
+	bd := priority.CalculateBreakdown(priority.Input{
+		Deadline:        task.Deadline,
+		Difficulty:      task.Difficulty,
+		EstDuration:     task.EstimatedDuration,
+		Type:            task.Type,
+		Progress:        task.Progress,
+		MaxDailyMinutes: budget,
+		Now:             time.Now(),
+	})
+	return TaskResponse{
+		Task:              task,
+		PriorityBreakdown: &bd,
+	}
+}
+
 
 type TaskStatusInput struct {
 	Status string `json:"status" binding:"required,oneof=pending in_progress done late"`
@@ -70,7 +94,19 @@ func (ctrl *TaskController) GetAll(konteks *gin.Context) {
 		return
 	}
 
-	response.OKWithMeta(konteks, "daftar tugas", tasks, response.Meta{
+	var pref migrations.UserPreference
+	ctrl.DB.Where("user_id = ?", user.ID).First(&pref)
+	budget := 120
+	if pref.SessionDuration > 0 {
+		budget = pref.SessionDuration * 3
+	}
+
+	taskResponses := make([]TaskResponse, len(tasks))
+	for i, t := range tasks {
+		taskResponses[i] = toTaskResponse(t, budget)
+	}
+
+	response.OKWithMeta(konteks, "daftar tugas", taskResponses, response.Meta{
 		Page:       page,
 		PerPage:    perPage,
 		Total:      total,

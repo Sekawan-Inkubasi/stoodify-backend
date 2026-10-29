@@ -19,15 +19,20 @@ func NewUserController(db *gorm.DB) *UserController {
 }
 
 type UpdateMeInput struct {
-	Name  *string `json:"name" binding:"omitempty,min=1,max=100"`
-	Email *string `json:"email" binding:"omitempty,email,max=100"`
+	Name   *string `json:"name" binding:"omitempty,min=1,max=100"`
+	Email  *string `json:"email" binding:"omitempty,email,max=100"`
+	School *string `json:"school" binding:"omitempty,max=150"`
+	Grade  *int8   `json:"grade" binding:"omitempty,min=7,max=13"`
+	Major  *string `json:"major" binding:"omitempty,max=100"`
 }
 
 type PreferencesInput struct {
-	StartTime       string `json:"start_time" binding:"omitempty,len=5"`
-	EndTime         string `json:"end_time" binding:"omitempty,len=5"`
-	SessionDuration int    `json:"session_duration" binding:"omitempty,min=15,max=600"`
-	ActiveDays      string `json:"active_days"`
+	StartTime         string `json:"start_time" binding:"omitempty,len=5"`
+	EndTime           string `json:"end_time" binding:"omitempty,len=5"`
+	SessionDuration   int    `json:"session_duration" binding:"omitempty,min=15,max=600"`
+	ActiveDays        string `json:"active_days"`
+	BreakDuration     int    `json:"break_duration" binding:"omitempty,min=5,max=120"`
+	MaxSessionsPerDay int    `json:"max_sessions_per_day" binding:"omitempty,min=1,max=10"`
 }
 
 func (ctrl *UserController) GetMe(konteks *gin.Context) {
@@ -41,6 +46,18 @@ func (ctrl *UserController) UpdateMe(konteks *gin.Context) {
 	if err := konteks.ShouldBindJSON(&input); err != nil {
 		response.ValidationError(konteks, err)
 		return
+	}
+
+	if input.School != nil {
+		user.School = *input.School
+	}
+
+	if input.Grade != nil {
+		user.Grade = *input.Grade
+	}
+
+	if input.Major != nil {
+		user.Major = *input.Major
 	}
 
 	if input.Name != nil {
@@ -107,6 +124,12 @@ func (ctrl *UserController) UpdatePreferences(konteks *gin.Context) {
 	}
 	if input.ActiveDays != "" {
 		pref.ActiveDays = input.ActiveDays
+	}
+	if input.BreakDuration > 0 {
+		pref.BreakDuration = input.BreakDuration
+	}
+	if input.MaxSessionsPerDay > 0 {
+		pref.MaxSessionsPerDay = input.MaxSessionsPerDay
 	}
 
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&pref).Error; err != nil {

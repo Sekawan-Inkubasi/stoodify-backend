@@ -16,9 +16,10 @@ import (
 var DB *gorm.DB
 
 func KonekKeDB() *gorm.DB {
-	if err := godotenv.Load(".env.local", ".env"); err != nil {
+	if err := godotenv.Load(".env"); err != nil {
 		log.Println("INFO: .env file tidak ditemukan, pakai environment variables")
 	}
+	_ = godotenv.Overload(".env.local")
 	InitStorage()
 
 	var dsn string
@@ -55,7 +56,6 @@ func KonekKeDB() *gorm.DB {
 }
 
 func NyariEnv(key string, replace_value string) string {
-
 	_, oke := os.LookupEnv(key)
 	if oke == true {
 		return os.Getenv(key)

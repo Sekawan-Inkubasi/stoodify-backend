@@ -55,16 +55,21 @@ type User struct {
 	Email        string          `gorm:"uniqueIndex;not null" json:"email"`
 	PasswordHash string          `gorm:"column:password_hash;not null" json:"-"`
 	Role         string          `gorm:"default:student" json:"role"`
+	School       string          `gorm:"type:varchar(150);" json:"school"`
+	Grade        int8            `gorm:"type:smallint" json:"grade"`
+	Major        string          `gorm:"type:varchar(100)" json:"major"`
 	Preferences  *UserPreference `gorm:"foreignKey:UserID" json:"preferences,omitempty"`
 }
 
 type UserPreference struct {
 	Base
-	UserID          uint   `gorm:"uniqueIndex;not null" json:"user_id"`
-	StartTime       string `json:"start_time"`
-	EndTime         string `json:"end_time"`
-	SessionDuration int    `json:"session_duration"`
-	ActiveDays      string `json:"active_days"`
+	UserID             uint   `gorm:"uniqueIndex;not null" json:"user_id"`
+	StartTime          string `json:"start_time"`
+	EndTime            string `json:"end_time"`
+	SessionDuration    int    `json:"session_duration"`
+	ActiveDays         string `json:"active_days"`
+	BreakDuration      int    `gorm:"default:15" json:"break_duration"`
+	MaxSessionsPerDay  int    `gorm:"default:3" json:"max_sessions_per_day"`
 }
 
 // ==================== SUBJECT & SCHEDULE ====================
@@ -73,7 +78,11 @@ type Subject struct {
 	Base
 	UserID     uint   `gorm:"index;not null" json:"user_id"`
 	Name       string `gorm:"not null" json:"name"`
+	Code       string `gorm:"type:varchar(20)" json:"code"`
+	Teacher    string `gorm:"type:varchar(100)" json:"teacher"`
 	Color      string `json:"color"`
+	AccentBg   string `gorm:"type:varchar(30)" json:"accent_bg"`
+	Category   string `gorm:"type:varchar(50)" json:"category"`
 	Difficulty int    `gorm:"check:difficulty >= 1 AND difficulty <= 5" json:"difficulty"`
 }
 
@@ -84,6 +93,8 @@ type Schedule struct {
 	DayOfWeek string `json:"day_of_week"`
 	StartTime string `json:"start_time"`
 	EndTime   string `json:"end_time"`
+	Room      string `gorm:"type:varchar(50)" json:"room"`
+	Teacher   string `gorm:"type:varchar(100)" json:"teacher"`
 
 	Subject *Subject `gorm:"foreignKey:SubjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"subject,omitempty"`
 }
@@ -95,6 +106,7 @@ type Task struct {
 	UserID            uint      `gorm:"index;not null" json:"user_id"`
 	SubjectID         uint      `gorm:"index" json:"subject_id"`
 	Title             string    `gorm:"not null" json:"title"`
+	MaterialName      string    `gorm:"type:varchar(100)" json:"material_name"`
 	Description       string    `json:"description"`
 	Type              string    `gorm:"default:assignment" json:"type"` // exam, project, assignment, reading
 	Deadline          time.Time `gorm:"index;not null" json:"deadline"`
@@ -221,6 +233,17 @@ func TambahIndexKinerja(db *gorm.DB) error {
 	}
 	for _, stmt := range statements {
 		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DropAll menghapus semua tabel. Urutan dibalik (anak -> induk) supaya FK aman.
+func DropAll(db *gorm.DB) error {
+	models := AllModels()
+	for i := len(models) - 1; i >= 0; i-- {
+		if err := db.Migrator().DropTable(models[i]); err != nil {
 			return err
 		}
 	}

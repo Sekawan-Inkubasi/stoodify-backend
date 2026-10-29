@@ -13,11 +13,9 @@ func NoContent(c *gin.Context) {
 }
 
 func ValidationError(c *gin.Context, err error) {
-	BadRequest(c, "Body request tidak valid", map[string]string{"body": err.Error()})
+	BadRequest(c, "Body request tidak valid, harap isi formulir dengan benar", map[string]string{"body": err.Error()})
 }
 
 func ServerError(c *gin.Context, err error) {
-	Fail(c, http.StatusInternalServerError, "mohon maaf ada kesalahan di sisi kami", map[string]string{
-		"body": err.Error(),
-	})
+	Fail(c, http.StatusInternalServerError, "mohon maaf ada kesalahan di sisi kami", nil)
 }

@@ -56,7 +56,7 @@ func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 	user := currentUser(konteks)
 	var input GenerateScheduleInput
 
-	if err := konteks.ShouldBindJSON(&input); err != nil {
+	if err := konteks.ShouldBindJSON(&input); err != nil && err.Error() != "EOF" {
 		response.ValidationError(konteks, err)
 		return
 	}

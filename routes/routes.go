@@ -248,6 +248,7 @@ func SetupRoutes() *gin.Engine {
 			sessions := protected.Group("/study-sessions")
 			{
 				sessions.GET("/", sessionCtrl.GetAll)
+				sessions.POST("/", sessionCtrl.Create)
 				sessions.GET("/today", sessionCtrl.GetToday)
 				sessions.PATCH("/:id", sessionCtrl.Update)
 				sessions.DELETE("/:id", sessionCtrl.Delete)

@@ -19,7 +19,11 @@ func NewSubjectController(db *gorm.DB) *SubjectController {
 
 type SubjectInput struct {
 	Name       string `json:"name" binding:"required,min=1,max=100"`
+	Code       string `json:"code" binding:"omitempty,max=20"`
+	Teacher    string `json:"teacher" binding:"omitempty,max=100"`
 	Color      string `json:"color" binding:"omitempty,max=20"`
+	AccentBg   string `json:"accent_bg" binding:"omitempty,max=30"`
+	Category   string `json:"category" binding:"omitempty,max=50"`
 	Difficulty int    `json:"difficulty" binding:"omitempty,min=1,max=5"`
 }
 
@@ -62,7 +66,11 @@ func (ctrl *SubjectController) Create(konteks *gin.Context) {
 	subject := migrations.Subject{
 		UserID:     user.ID,
 		Name:       input.Name,
+		Code:       input.Code,
+		Teacher:    input.Teacher,
 		Color:      input.Color,
+		AccentBg:   input.AccentBg,
+		Category:   input.Category,
 		Difficulty: input.Difficulty,
 	}
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&subject).Error; err != nil {
@@ -107,7 +115,11 @@ func (ctrl *SubjectController) Update(konteks *gin.Context) {
 	}
 
 	subject.Name = input.Name
+	subject.Code = input.Code
+	subject.Teacher = input.Teacher
 	subject.Color = input.Color
+	subject.AccentBg = input.AccentBg
+	subject.Category = input.Category
 	if input.Difficulty > 0 {
 		subject.Difficulty = input.Difficulty
 	}

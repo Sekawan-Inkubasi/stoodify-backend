@@ -19,11 +19,69 @@ func NewStudySessionController(db *gorm.DB) *StudySessionController {
 	return &StudySessionController{DB: db}
 }
 
+type SessionCreateInput struct {
+	TaskID         uint      `json:"task_id" binding:"required"`
+	SessionDate    time.Time `json:"session_date" binding:"required"`
+	StartTime      string    `json:"start_time" binding:"required,len=5"`
+	Duration       int       `json:"duration" binding:"required,min=5,max=600"`
+	TargetProgress int       `json:"target_progress" binding:"omitempty,min=0,max=100"`
+}
+
 type SessionUpdateInput struct {
 	SessionDate *time.Time `json:"session_date"`
 	StartTime   *string    `json:"start_time" binding:"omitempty,len=5"`
 	Duration    *int       `json:"duration" binding:"omitempty,min=5,max=600"`
 	Status      *string    `json:"status" binding:"omitempty,oneof=planned completed skipped"`
+}
+
+func (ctrl *StudySessionController) Create(konteks *gin.Context) {
+	user := currentUser(konteks)
+	var input SessionCreateInput
+
+	if err := konteks.ShouldBindJSON(&input); err != nil {
+		response.ValidationError(konteks, err)
+		return
+	}
+
+	if hhmmMinutes(input.StartTime) < 0 {
+		response.UnprocessableEntity(konteks, "format start_time tidak valid", map[string]string{
+			"start_time": "harus format HH:MM",
+		})
+		return
+	}
+
+	task, found := findOwnedTask(user.ID, input.TaskID)
+	if !found {
+		response.NotFound(konteks, "tugas tidak ditemukan")
+		return
+	}
+
+	targetProgress := input.TargetProgress
+	if targetProgress <= 0 {
+		targetProgress = task.Progress + 20
+		if targetProgress > 100 {
+			targetProgress = 100
+		}
+	}
+
+	session := migrations.StudySession{
+		UserID:         user.ID,
+		TaskID:         input.TaskID,
+		SessionDate:    input.SessionDate,
+		StartTime:      input.StartTime,
+		Duration:       input.Duration,
+		TargetProgress: targetProgress,
+		Status:         migrations.SessionPlanned,
+		AIGenerated:    false,
+		Reason:         "Dibuat manual oleh siswa",
+	}
+
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&session).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+	ctrl.DB.Preload("Task").First(&session, session.ID)
+	response.Created(konteks, "sesi belajar dibuat", session)
 }
 
 func (ctrl *StudySessionController) GetAll(konteks *gin.Context) {

@@ -52,6 +52,68 @@ func urgency(daysLeft float64) float64 {
 	}
 }
 
+type Breakdown struct {
+	UrgencyScore    float64 `json:"urgency_score"`
+	DifficultyScore float64 `json:"difficulty_score"`
+	DurationScore   float64 `json:"duration_score"`
+	ImportanceScore float64 `json:"importance_score"`
+	LateRiskScore   float64 `json:"late_risk_score"`
+	TotalScore      float64 `json:"total_score"`
+}
+
+// CalculateBreakdown menghitung detail bobot masing-masing faktor prioritas.
+func CalculateBreakdown(in Input) Breakdown {
+	now := in.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	daysLeft := in.Deadline.Sub(now).Hours() / 24
+
+	maxDaily := in.MaxDailyMinutes
+	if maxDaily <= 0 {
+		maxDaily = 120
+	}
+
+	difficulty := float64(in.Difficulty)
+	if difficulty < 1 {
+		difficulty = 1
+	}
+	if difficulty > 5 {
+		difficulty = 5
+	}
+
+	u := urgency(daysLeft) / 10
+	d := (difficulty - 1) / 4
+	dur := math.Min(float64(in.EstDuration)/float64(maxDaily), 1)
+	imp := importance(in.Type)
+
+	lateRisk := 0.0
+	if in.Progress < 20 && daysLeft < 3 {
+		lateRisk = 1
+	}
+
+	raw := u*WeightUrgency + d*WeightDiff + dur*WeightDuration + imp*WeightImport + lateRisk*WeightLateRisk
+	score := raw * 100
+
+	progress := in.Progress
+	if progress < 0 {
+		progress = 0
+	}
+	if progress > 100 {
+		progress = 100
+	}
+	score *= 1 - float64(progress)/100
+
+	return Breakdown{
+		UrgencyScore:    math.Round(u*WeightUrgency*100*100) / 100,
+		DifficultyScore: math.Round(d*WeightDiff*100*100) / 100,
+		DurationScore:   math.Round(dur*WeightDuration*100*100) / 100,
+		ImportanceScore: math.Round(imp*WeightImport*100*100) / 100,
+		LateRiskScore:   math.Round(lateRisk*WeightLateRisk*100*100) / 100,
+		TotalScore:      math.Round(score*100) / 100,
+	}
+}
+
 // Score mengembalikan 0..100. Progres mengurangi skor secara proporsional.
 func Score(in Input) float64 {
 	now := in.Now

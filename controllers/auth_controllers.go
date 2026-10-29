@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"stoodify_backend/internal/hashing_password"
+	hashingPassword "stoodify_backend/internal/hashing_password"
 	"stoodify_backend/internal/response"
 	"stoodify_backend/internal/token"
 	"stoodify_backend/middlewares"
@@ -34,6 +34,9 @@ func NewAuthController(db *gorm.DB) *AuthController {
 type RegisterInput struct {
 	Name            string `json:"name" binding:"required,min=1,max=100"`
 	Email           string `json:"email" binding:"required,email,max=100"`
+	School          string `json:"school" binding:"required,max=150"`
+	Grade           int8   `json:"grade" binding:"required,min=7,max=13"`
+	Major           string `json:"major" binding:"required,max=100"`
 	Password        string `json:"password" binding:"required,min=8"`
 	ConfirmPassword string `json:"confirm_password" binding:"required"`
 }
@@ -85,6 +88,9 @@ func (ctrl *AuthController) Register(konteks *gin.Context) {
 
 	user := migrations.User{
 		Name:         input.Name,
+		School:       input.School,
+		Grade:        input.Grade,
+		Major:        input.Major,
 		Email:        input.Email,
 		PasswordHash: hashed,
 		Role:         migrations.RoleStudent,
@@ -108,7 +114,6 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 
 	email := normalizeEmail(input.Email)
 	err := ctrl.DB.WithContext(konteks.Request.Context()).Where("email = ?", email).First(&user).Error
-
 	// email tidak ketemu & password salah dibalas pesan identik (401), supaya
 	// penyerang tidak bisa menebak email mana yang terdaftar.
 	if err != nil {

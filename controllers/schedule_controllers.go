@@ -22,9 +22,32 @@ func NewScheduleController(db *gorm.DB) *ScheduleController {
 
 type ScheduleInput struct {
 	SubjectID uint   `json:"subject_id" binding:"required"`
-	DayOfWeek string `json:"day_of_week" binding:"required,oneof=Monday Tuesday Wednesday Thursday Friday Saturday Sunday"`
+	DayOfWeek string `json:"day_of_week" binding:"required"`
 	StartTime string `json:"start_time" binding:"required,len=5"`
 	EndTime   string `json:"end_time" binding:"required,len=5"`
+	Room      string `json:"room" binding:"omitempty,max=50"`
+	Teacher   string `json:"teacher" binding:"omitempty,max=100"`
+}
+
+func normalizeDayOfWeek(day string) string {
+	switch strings.ToLower(strings.TrimSpace(day)) {
+	case "senin", "monday", "1":
+		return "Monday"
+	case "selasa", "tuesday", "2":
+		return "Tuesday"
+	case "rabu", "wednesday", "3":
+		return "Wednesday"
+	case "kamis", "thursday", "4":
+		return "Thursday"
+	case "jumat", "jum'at", "friday", "5":
+		return "Friday"
+	case "sabtu", "saturday", "6":
+		return "Saturday"
+	case "minggu", "ahad", "sunday", "7":
+		return "Sunday"
+	default:
+		return ""
+	}
 }
 
 func (ctrl *ScheduleController) GetAll(konteks *gin.Context) {
@@ -51,6 +74,14 @@ func (ctrl *ScheduleController) Create(konteks *gin.Context) {
 		return
 	}
 
+	day := normalizeDayOfWeek(input.DayOfWeek)
+	if day == "" {
+		response.UnprocessableEntity(konteks, "nama hari tidak valid", map[string]string{
+			"day_of_week": "harus nama hari (Senin-Minggu / Monday-Sunday / 1-7)",
+		})
+		return
+	}
+
 	start, end := hhmmMinutes(input.StartTime), hhmmMinutes(input.EndTime)
 	if start < 0 || end < 0 || start >= end {
 		response.UnprocessableEntity(konteks, "rentang waktu jadwal tidak valid", map[string]string{
@@ -64,7 +95,7 @@ func (ctrl *ScheduleController) Create(konteks *gin.Context) {
 		return
 	}
 
-	conflict, err := ctrl.findConflict(konteks, user.ID, input.DayOfWeek, start, end, 0)
+	conflict, err := ctrl.findConflict(konteks, user.ID, day, start, end, 0)
 	if err != nil {
 		response.ServerError(konteks, err)
 		return
@@ -79,9 +110,11 @@ func (ctrl *ScheduleController) Create(konteks *gin.Context) {
 	schedule := migrations.Schedule{
 		UserID:    user.ID,
 		SubjectID: input.SubjectID,
-		DayOfWeek: input.DayOfWeek,
+		DayOfWeek: day,
 		StartTime: input.StartTime,
 		EndTime:   input.EndTime,
+		Room:      input.Room,
+		Teacher:   input.Teacher,
 	}
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&schedule).Error; err != nil {
 		response.ServerError(konteks, err)
@@ -132,6 +165,14 @@ func (ctrl *ScheduleController) Update(konteks *gin.Context) {
 		return
 	}
 
+	day := normalizeDayOfWeek(input.DayOfWeek)
+	if day == "" {
+		response.UnprocessableEntity(konteks, "nama hari tidak valid", map[string]string{
+			"day_of_week": "harus nama hari (Senin-Minggu / Monday-Sunday / 1-7)",
+		})
+		return
+	}
+
 	start, end := hhmmMinutes(input.StartTime), hhmmMinutes(input.EndTime)
 	if start < 0 || end < 0 || start >= end {
 		response.UnprocessableEntity(konteks, "rentang waktu jadwal tidak valid", map[string]string{
@@ -144,7 +185,7 @@ func (ctrl *ScheduleController) Update(konteks *gin.Context) {
 		return
 	}
 
-	conflict, err := ctrl.findConflict(konteks, user.ID, input.DayOfWeek, start, end, schedule.ID)
+	conflict, err := ctrl.findConflict(konteks, user.ID, day, start, end, schedule.ID)
 	if err != nil {
 		response.ServerError(konteks, err)
 		return
@@ -157,9 +198,11 @@ func (ctrl *ScheduleController) Update(konteks *gin.Context) {
 	}
 
 	schedule.SubjectID = input.SubjectID
-	schedule.DayOfWeek = input.DayOfWeek
+	schedule.DayOfWeek = day
 	schedule.StartTime = input.StartTime
 	schedule.EndTime = input.EndTime
+	schedule.Room = input.Room
+	schedule.Teacher = input.Teacher
 
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&schedule).Error; err != nil {
 		response.ServerError(konteks, err)
