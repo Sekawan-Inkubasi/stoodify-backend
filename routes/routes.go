@@ -136,6 +136,7 @@ func SetupRoutes() *gin.Engine {
 	notificationCtrl := ctrl.NewNotificationController(config.DB)
 	sessionCtrl := ctrl.NewStudySessionController(config.DB)
 	statsCtrl := ctrl.NewStatisticsController(config.DB)
+	curriculumCtrl := ctrl.NewCurriculumController(config.DB)
 
 	// Base API Group (Limit umum: 60 req/menit)
 	api := r.Group("/api")
@@ -159,6 +160,7 @@ func SetupRoutes() *gin.Engine {
 						"notifications":  "/api/notifications",
 						"study_sessions": "/api/study-sessions",
 						"statistics":     "/api/statistics",
+						"curriculum":     "/api/curriculum",
 					},
 				},
 			})
@@ -198,6 +200,7 @@ func SetupRoutes() *gin.Engine {
 			{
 				users.GET("/me", userCtrl.GetMe)
 				users.PATCH("/me", userCtrl.UpdateMe)
+				users.POST("/change-password", authCtrl.ChangePassword)
 				users.GET("/me/preferences", userCtrl.GetPreferences)
 				users.PATCH("/me/preferences", userCtrl.UpdatePreferences)
 			}
@@ -301,6 +304,14 @@ func SetupRoutes() *gin.Engine {
 				statistics.GET("/weekly", statsCtrl.GetWeekly)
 				statistics.GET("/monthly", statsCtrl.GetMonthly)
 				statistics.GET("/subjects", statsCtrl.GetBySubjects)
+			}
+
+			// --- CURRICULUM & SYLLABUS (ROADMAP) ---
+			curriculum := protected.Group("/curriculum")
+			{
+				curriculum.GET("/roadmap/:subjectId", curriculumCtrl.GetRoadmapBySubject)
+				curriculum.POST("/topics", curriculumCtrl.CreateTopic)
+				curriculum.POST("/topics/:topicId/progress", curriculumCtrl.UpdateProgress)
 			}
 		}
 	}

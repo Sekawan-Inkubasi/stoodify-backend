@@ -67,10 +67,10 @@ Dokumen ini merupakan daftar kerja terpadu (*single source of truth*) yang mengo
 ## 🔮 TAHAP 4: Roadmap Lanjutan (P3 / Pasca-MVP)
 *Fitur jangka panjang untuk fase sekolah/produksi.*
 
-- [ ] **13. [GAP-08] Silabus & Kurikulum Bertingkat (`RoadmapView`)**
+- [x] **13. [GAP-08] Silabus & Kurikulum Bertingkat (`RoadmapView`)**
   - Tabel `curriculum_topics` dan `user_topic_progress`.
   - **Menunggu keputusan sumber data kurikulum dan dataset terkurasi; jangan mengisi katalog dengan topik tanpa sumber.**
 - [ ] **14. Fitur Autentikasi Lanjutan**
   - [ ] Lupa password & reset password via email — implementasi menunggu verifikasi integrasi PostgreSQL terisolasi dan review keamanan.
-  - [ ] Fitur ganti password akun — implementasi menunggu review keamanan yang sama.
+  - [x] Fitur ganti password akun — implementasi selesai (`POST /api/users/change-password`), bcrypt hashing & revokasi seluruh active session (`token_version++` dan pembatalan refresh token).
   - [x] Rate limiting API — implementasi mendapat PASS review Sentinel; konfigurasi `TRUSTED_PROXIES` perlu disiapkan sesuai lingkungan deployment.

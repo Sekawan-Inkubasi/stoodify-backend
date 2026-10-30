@@ -202,6 +202,40 @@ type PasswordResetToken struct {
 	UsedAt    *time.Time `gorm:"index" json:"used_at,omitempty"`
 }
 
+// ==================== CURRICULUM & SYLLABUS ====================
+
+const (
+	TopicStatusNotStarted = "not_started"
+	TopicStatusInProgress = "in_progress"
+	TopicStatusMastered   = "mastered"
+)
+
+type CurriculumTopic struct {
+	Base
+	SubjectID    uint   `gorm:"index;not null" json:"subject_id"`
+	Title        string `gorm:"not null" json:"title"`
+	Description  string `json:"description"`
+	Order        int    `gorm:"default:0" json:"order"`
+	Grade        int8   `gorm:"type:smallint" json:"grade"`
+	Major        string `gorm:"type:varchar(100)" json:"major"`
+	Term         int8   `gorm:"type:smallint;default:1" json:"term"`
+	EstimatedMin int    `gorm:"default:60" json:"estimated_minutes"`
+
+	Subject *Subject `gorm:"foreignKey:SubjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"subject,omitempty"`
+}
+
+type UserTopicProgress struct {
+	Base
+	UserID      uint       `gorm:"index;not null" json:"user_id"`
+	TopicID     uint       `gorm:"index;not null" json:"topic_id"`
+	Status      string     `gorm:"default:not_started;index" json:"status"` // not_started, in_progress, mastered
+	Notes       string     `json:"notes"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+
+	User  *User            `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
+	Topic *CurriculumTopic `gorm:"foreignKey:TopicID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"topic,omitempty"`
+}
+
 // ==================== MIGRATION HELPERS ====================
 
 func AllModels() []interface{} {
@@ -218,6 +252,8 @@ func AllModels() []interface{} {
 		&MaterialPrediction{},
 		&RefreshToken{},
 		&PasswordResetToken{},
+		&CurriculumTopic{},
+		&UserTopicProgress{},
 	}
 }
 
@@ -241,6 +277,8 @@ func TambahIndexKinerja(db *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_notifications_task_type ON notifications (task_id, type, scheduled_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_active ON refresh_tokens (user_id, revoked_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_predictions_user_subject ON material_predictions (user_id, subject_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_curriculum_topics_subject ON curriculum_topics (subject_id, "order")`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_topic_progress_user_topic ON user_topic_progress (user_id, topic_id)`,
 	}
 	for _, stmt := range statements {
 		if err := db.Exec(stmt).Error; err != nil {
