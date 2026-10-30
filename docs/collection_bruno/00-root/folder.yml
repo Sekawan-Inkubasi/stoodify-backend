@@ -1,0 +1,6 @@
+info:
+  name: 00-root
+  type: folder
+
+request:
+  auth: inherit

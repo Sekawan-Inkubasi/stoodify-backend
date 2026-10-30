@@ -205,6 +205,8 @@
   },
   "active": "6f2f8511e8094656",
   "lastOpenFiles": [
+    "collection_bruno/01-auth/folder.yml",
+    "collection_bruno/00-root/folder.yml",
     "AGENTS.md",
     "GLOSSARY.md",
     "SECURITY.md",
@@ -226,7 +228,6 @@
     "collection_bruno/10-notifications/get-notifications.yml",
     "collection_bruno/09-ai/submit-prediction-feedback.yml",
     "collection_bruno/09-ai/get-material-prediction-by-subject.yml",
-    "collection_bruno/09-ai/generate-material-prediction.yml",
     "API.md",
     "to-do.md",
     "DEPLOY.md",

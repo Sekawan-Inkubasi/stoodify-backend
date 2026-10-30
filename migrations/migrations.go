@@ -236,6 +236,10 @@ type UserTopicProgress struct {
 	Topic *CurriculumTopic `gorm:"foreignKey:TopicID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"topic,omitempty"`
 }
 
+func (UserTopicProgress) TableName() string {
+	return "user_topic_progress"
+}
+
 // ==================== MIGRATION HELPERS ====================
 
 func AllModels() []interface{} {

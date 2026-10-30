@@ -17,7 +17,7 @@ config:
 request:
   headers:
     - name: Authorization
-      value: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjU2LCJ0eXAiOiJhY2Nlc3MiLCJleHAiOjE3OTMzMDM5MzgsImlhdCI6MTc5MzMwMzAzOCwianRpIjoiNWRjZmZjYjk5ZWQ0ZDZkN2VmNDcxZWVkYTQ0YzU1OTAifQ.CjRGcvchdyT8G0DKWBbWz7owvLIn6uWaXp7sk60Awek
+      value: Bearer ...
   auth:
     type: bearer
     token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjU2LCJ0eXAiOiJhY2Nlc3MiLCJleHAiOjE3OTMzMDM5MzgsImlhdCI6MTc5MzMwMzAzOCwianRpIjoiNWRjZmZjYjk5ZWQ0ZDZkN2VmNDcxZWVkYTQ0YzU1OTAifQ.CjRGcvchdyT8G0DKWBbWz7owvLIn6uWaXp7sk60Awek

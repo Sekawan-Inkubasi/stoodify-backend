@@ -628,7 +628,79 @@ Untuk dashboard siswa.
 
 ---
 
-## 13. Alur Nyata di Aplikasi (cheat sheet)
+## 13. Kurikulum & Silabus Bertingkat (RoadmapView)
+
+### `GET /curriculum/roadmap/:subjectId`
+Mengambil daftar topik silabus mata pelajaran secara terurut beserta status progress belajar siswa (`not_started`, `in_progress`, `mastered`) dan kalkulasi persentase kelulusan (`completion_rate`).
+
+- **Auth**: Wajib (Bearer Token)
+- **Header**: `Authorization: Bearer <access_token>`
+- **Response**: `200 OK`
+  ```json
+  {
+    "success": true,
+    "message": "roadmap kurikulum berhasil diambil",
+    "data": {
+      "subject_id": 1,
+      "subject_name": "Matematika",
+      "total_topics": 10,
+      "mastered_topics": 4,
+      "in_progress_topics": 2,
+      "completion_rate": 40.0,
+      "topics": [
+        {
+          "id": 1,
+          "subject_id": 1,
+          "title": "Integral Substitusi & Parsial",
+          "description": "Pengenalan teknik integral tingkat lanjut",
+          "order_index": 1,
+          "grade": 12,
+          "status": "mastered",
+          "notes": "Sudah paham konsep dasar",
+          "completed_at": "2026-10-30T10:00:00Z"
+        }
+      ]
+    }
+  }
+  ```
+
+### `POST /curriculum/topics`
+Menambahkan topik silabus baru ke mata pelajaran.
+
+- **Auth**: Wajib (Bearer Token)
+- **Header**: `Authorization: Bearer <access_token>`
+- **Body**:
+  ```json
+  {
+    "subject_id": 1,
+    "title": "Integral Tentu & Luas Daerah",
+    "description": "Penerapan integral untuk menghitung luas di bawah kurva",
+    "order_index": 2,
+    "grade": 12,
+    "major": "IPA",
+    "term": 1,
+    "estimated_minutes": 90
+  }
+  ```
+- **Response**: `201 Created`
+
+### `POST /curriculum/topics/:topicId/progress`
+Memperbarui status progress belajar siswa untuk topik silabus tertentu.
+
+- **Auth**: Wajib (Bearer Token)
+- **Header**: `Authorization: Bearer <access_token>`
+- **Body**:
+  ```json
+  {
+    "status": "mastered",
+    "notes": "Latihan soal telah diselesaikan"
+  }
+  ```
+- **Response**: `200 OK`
+
+---
+
+## 14. Alur Nyata di Aplikasi (cheat sheet)
 
 ### Onboarding (register → atur preferensi)
 
@@ -667,7 +739,7 @@ POST /ai/reschedule                 → semua sesi planned disusun ulang ke slot
 
 ---
 
-## 14. Lampiran: Sumber AI
+## 15. Lampiran: Sumber AI
 
 | Variabel | Fungsi |
 |---|---|

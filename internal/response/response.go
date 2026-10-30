@@ -94,3 +94,7 @@ func UnprocessableEntity(c *gin.Context, message string, errs map[string]string)
 func InternalServerError(c *gin.Context, message string) {
 	Fail(c, http.StatusInternalServerError, message, nil)
 }
+
+func TooManyRequests(c *gin.Context, message string) {
+	Fail(c, http.StatusTooManyRequests, message, nil)
+}
