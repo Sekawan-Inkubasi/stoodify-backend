@@ -3,6 +3,7 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,6 +13,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"stoodify_backend/config"
+	"stoodify_backend/middlewares"
 	"stoodify_backend/migrations"
 )
 
@@ -32,28 +35,30 @@ func setupCurriculumTestDB(t *testing.T) *gorm.DB {
 func TestCurriculumController(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupCurriculumTestDB(t)
+	config.DB = db
 	ctrl := NewCurriculumController(db)
 
 	// Seed User & Subject
 	user := migrations.User{
-		Username: "student1",
-		Email:    "student1@example.com",
-		Password: "secret123",
-		Role:     migrations.RoleStudent,
+		Name:         "Student Test",
+		Email:        "student1@example.com",
+		PasswordHash: "hashed_secret123",
+		Role:         migrations.RoleStudent,
 	}
 	db.Create(&user)
 
 	subject := migrations.Subject{
-		UserID: user.ID,
-		Name:   "Matematika Peminatan",
-		Color:  "#2563EB",
+		UserID:     user.ID,
+		Name:       "Matematika Peminatan",
+		Color:      "#2563EB",
+		Difficulty: 3,
 	}
 	db.Create(&subject)
 
 	r := gin.New()
 	// Mock auth middleware inject currentUser
 	r.Use(func(c *gin.Context) {
-		c.Set("currentUser", user)
+			c.Set(middlewares.ContextUserKey, user)
 		c.Next()
 	})
 
@@ -94,7 +99,7 @@ func TestCurriculumController(t *testing.T) {
 		}
 		jsonProgress, _ := json.Marshal(progressBody)
 
-		reqProgress := httptest.NewRequest(http.MethodPost, "/api/curriculum/topics/"+string(rune('0'+topic.ID))+"/progress", bytes.NewBuffer(jsonProgress))
+		reqProgress := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/curriculum/topics/%d/progress", topic.ID), bytes.NewBuffer(jsonProgress))
 		reqProgress.Header.Set("Content-Type", "application/json")
 		wProgress := httptest.NewRecorder()
 		r.ServeHTTP(wProgress, reqProgress)
@@ -102,7 +107,7 @@ func TestCurriculumController(t *testing.T) {
 		assert.Equal(t, http.StatusOK, wProgress.Code)
 
 		// Get roadmap summary
-		reqRoadmap := httptest.NewRequest(http.MethodGet, "/api/curriculum/roadmap/"+string(rune('0'+subject.ID)), nil)
+		reqRoadmap := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/curriculum/roadmap/%d", subject.ID), nil)
 		wRoadmap := httptest.NewRecorder()
 		r.ServeHTTP(wRoadmap, reqRoadmap)
 
