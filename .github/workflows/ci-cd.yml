@@ -1,0 +1,79 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Lint and Vet (Go 1.27)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/src -w /src golang:1.27-alpine sh -c "gofmt -l . && go vet ./..."
+
+      - name: Test Docker Production Build
+        run: |
+          docker build -t stoodify-backend:test .
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+    steps:
+      - name: Check VPS Secrets
+        id: check_secrets
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_KEY" ]; then
+            echo "Secrets VPS_HOST or VPS_SSH_KEY not provided. Skipping deploy."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy via SSH
+        if: steps.check_secrets.outputs.skip != 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME || 'root' }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 20220 }}
+          script_stop: true
+          script: |
+            TARGET_DIR="${{ secrets.VPS_TARGET_DIR || '/root/stoodify-backend' }}"
+            echo "Deploying to: $TARGET_DIR"
+
+            if [ ! -d "$TARGET_DIR" ]; then
+              echo "Error: Directory $TARGET_DIR does not exist."
+              exit 1
+            fi
+
+            cd "$TARGET_DIR"
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            docker compose up -d --build app
+            docker image prune -f
+
+            echo "Deployment completed successfully!"
