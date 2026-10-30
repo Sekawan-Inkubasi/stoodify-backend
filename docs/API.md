@@ -216,8 +216,36 @@ Error:
 |---|---|---|
 | GET | `/users/me` | Ambil profil sendiri |
 | PATCH | `/users/me` | Ubah nama / email |
+| POST | `/users/change-password` | Ganti password akun & cabut seluruh sesi lama |
 | GET | `/users/me/preferences` | Ambil preferensi belajar |
 | PATCH | `/users/me/preferences` | Simpan preferensi belajar |
+
+### Contoh: ganti password akun
+
+```
+POST /users/change-password
+```
+Header:
+`Authorization: Bearer <access_token>`
+
+```json
+{
+  "old_password": "rahasia123",
+  "new_password": "passwordBaru456",
+  "confirm_password": "passwordBaru456"
+}
+```
+> Catatan: Field password lama mendukung nama JSON `old_password` atau `current_password`. Minimal panjang password baru adalah 8 karakter.
+
+Response Sukses (**200 OK**):
+```json
+{
+  "success": true,
+  "message": "password berhasil diubah, silakan login kembali dengan password baru",
+  "data": null
+}
+```
+> Seluruh sesi lama (`refresh_tokens`) akan dicabut otomatis demi keamanan akun.
 
 ### Contoh: atur preferensi waktu belajar
 

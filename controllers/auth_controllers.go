@@ -66,9 +66,10 @@ type PasswordResetConfirmInput struct {
 }
 
 type ChangePasswordInput struct {
-	CurrentPassword string `json:"current_password" binding:"required"`
+	CurrentPassword string `json:"current_password"`
+	OldPassword     string `json:"old_password"`
 	NewPassword     string `json:"new_password" binding:"required,min=8"`
-	ConfirmPassword string `json:"confirm_password" binding:"required"`
+	ConfirmPassword string `json:"confirm_password"`
 }
 
 func (ctrl *AuthController) Register(konteks *gin.Context) {
@@ -417,7 +418,19 @@ func (ctrl *AuthController) ChangePassword(konteks *gin.Context) {
 		return
 	}
 
-	if input.NewPassword != input.ConfirmPassword {
+	// Dukung alias old_password atau current_password
+	oldPass := input.CurrentPassword
+	if oldPass == "" {
+		oldPass = input.OldPassword
+	}
+	if oldPass == "" {
+		response.BadRequest(konteks, "password saat ini wajib diisi", map[string]string{
+			"current_password": "password saat ini wajib diisi",
+		})
+		return
+	}
+
+	if input.ConfirmPassword != "" && input.NewPassword != input.ConfirmPassword {
 		response.UnprocessableEntity(konteks, "password baru dan konfirmasi password tidak cocok", map[string]string{
 			"confirm_password": "password mismatch",
 		})
@@ -427,7 +440,7 @@ func (ctrl *AuthController) ChangePassword(konteks *gin.Context) {
 	user := middlewares.MustUser(konteks)
 
 	// Verifikasi password saat ini
-	if !hashingPassword.CheckPasswordHash(input.CurrentPassword, user.PasswordHash) {
+	if !hashingPassword.CheckPasswordHash(oldPass, user.PasswordHash) {
 		response.BadRequest(konteks, "password saat ini salah", map[string]string{
 			"current_password": "password salah",
 		})

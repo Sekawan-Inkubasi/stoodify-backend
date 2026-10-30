@@ -15,7 +15,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	hashingPassword "stoodify_backend/internal/hashing_password"
 	"stoodify_backend/internal/token"
+	"stoodify_backend/middlewares"
 	"stoodify_backend/migrations"
 )
 
@@ -268,4 +270,80 @@ func TestPasswordResetRequest_GenericResponseEquivalence(t *testing.T) {
 	}
 
 	t.Logf("[GENERIC RESPONSE CHECK] Kedua alur sukses mengembalikan envelope dan pesan publik identik")
+}
+
+func TestChangePassword_SuccessAndRevocation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupTestDB(t)
+	ctrl := NewAuthController(db)
+
+	passHash, _ := hashingPassword.HashPassword("lamaRahasia123")
+	user := migrations.User{
+		Name:         "Siswa Uji",
+		Email:        fmt.Sprintf("changepass_%d@example.com", time.Now().UnixNano()),
+		PasswordHash: passHash,
+		Role:         migrations.RoleStudent,
+		TokenVersion: 1,
+	}
+	db.Create(&user)
+
+	// Seed refresh token aktif
+	rawToken, tokHash, _ := token.GenerateRandomToken()
+	_ = rawToken
+	activeRef := migrations.RefreshToken{
+		UserID:    user.ID,
+		TokenHash: tokHash,
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+	}
+	db.Create(&activeRef)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(middlewares.ContextUserKey, user)
+		c.Next()
+	})
+	r.POST("/api/users/change-password", ctrl.ChangePassword)
+
+	// 1. Password lama salah
+	bodyWrong, _ := json.Marshal(map[string]string{
+		"old_password": "passwordsalah",
+		"new_password": "baruRahasia123",
+	})
+	reqWrong, _ := http.NewRequest(http.MethodPost, "/api/users/change-password", bytes.NewReader(bodyWrong))
+	reqWrong.Header.Set("Content-Type", "application/json")
+	wWrong := httptest.NewRecorder()
+	r.ServeHTTP(wWrong, reqWrong)
+	if wWrong.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 untuk password lama salah, got %d", wWrong.Code)
+	}
+
+	// 2. Password berhasil diubah (mendukung old_password dan new_password)
+	bodySuccess, _ := json.Marshal(map[string]string{
+		"old_password": "lamaRahasia123",
+		"new_password": "baruRahasia123",
+	})
+	reqSuccess, _ := http.NewRequest(http.MethodPost, "/api/users/change-password", bytes.NewReader(bodySuccess))
+	reqSuccess.Header.Set("Content-Type", "application/json")
+	wSuccess := httptest.NewRecorder()
+	r.ServeHTTP(wSuccess, reqSuccess)
+	if wSuccess.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK untuk change password sukses, got %d body: %s", wSuccess.Code, wSuccess.Body.String())
+	}
+
+	// 3. Verifikasi token_version naik dan refresh token dicabut di DB
+	var updatedUser migrations.User
+	db.First(&updatedUser, user.ID)
+	if updatedUser.TokenVersion != 2 {
+		t.Errorf("expected token_version 2, got %d", updatedUser.TokenVersion)
+	}
+
+	if !hashingPassword.CheckPasswordHash("baruRahasia123", updatedUser.PasswordHash) {
+		t.Errorf("password baru tidak ter-hash dengan benar")
+	}
+
+	var updatedRef migrations.RefreshToken
+	db.First(&updatedRef, activeRef.ID)
+	if updatedRef.RevokedAt == nil {
+		t.Errorf("expected refresh token aktif dicabut (revoked_at tidak nil)")
+	}
 }
