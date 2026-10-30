@@ -97,7 +97,30 @@ func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 		pref.SessionDuration = 60
 	}
 
-	slots, source := ctrl.panggilAIScheduler(konteks, user.ID, targetDate, tasks, pref)
+	var schedules []migrations.Schedule
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).
+		Where("user_id = ?", user.ID).Find(&schedules).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	var activities []migrations.Activity
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).
+		Where("user_id = ?", user.ID).Find(&activities).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	var existingSessions []migrations.StudySession
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).
+		Where("user_id = ? AND session_date >= ? AND status = ?",
+			user.ID, targetDate.Format("2006-01-02"), migrations.SessionPlanned).
+		Find(&existingSessions).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	slots, source := ctrl.panggilAIScheduler(konteks, user.ID, targetDate, tasks, pref, schedules, activities, existingSessions)
 	if source == "" {
 		response.Fail(konteks, 502, "layanan AI tidak dapat dihubungi, silakan coba lagi", nil)
 		return
@@ -151,19 +174,33 @@ func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 
 // panggilAIScheduler: coba AI Spec 1 dulu, fallback ke time-slot finder lokal.
 // Mengembalikan (slots, sumber); sumber kosong = AI gagal DAN fallback dimatikan.
-func (ctrl *AIController) panggilAIScheduler(konteks *gin.Context, userID uint, date time.Time, tasks []migrations.Task, pref migrations.UserPreference) ([]slotRekomendasi, string) {
+func (ctrl *AIController) panggilAIScheduler(
+	konteks *gin.Context,
+	userID uint,
+	date time.Time,
+	tasks []migrations.Task,
+	pref migrations.UserPreference,
+	schedules []migrations.Schedule,
+	activities []migrations.Activity,
+	existingSessions []migrations.StudySession,
+) ([]slotRekomendasi, string) {
 	url := os.Getenv("AI_SCHEDULER_URL")
 	if url != "" {
 		payload := gin.H{
-			"user_id": userID,
-			"date":    date.Format("2006-01-02"),
+			"user_id":  userID,
+			"date":     date.Format("2006-01-02"),
+			"now":      time.Now().Format(time.RFC3339),
+			"timezone": "Asia/Jakarta",
 			"preferences": gin.H{
 				"start_time":       pref.StartTime,
 				"end_time":         pref.EndTime,
 				"session_duration": pref.SessionDuration,
 				"active_days":      pref.ActiveDays,
 			},
-			"tasks": tasks,
+			"tasks":             tasks,
+			"schedules":         schedules,
+			"activities":        activities,
+			"existing_sessions": existingSessions,
 		}
 		var result struct {
 			Sessions []slotRekomendasi `json:"sessions"`
