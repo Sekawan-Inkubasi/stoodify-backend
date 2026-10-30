@@ -58,6 +58,7 @@ type User struct {
 	School       string          `gorm:"type:varchar(150);" json:"school"`
 	Grade        int8            `gorm:"type:smallint" json:"grade"`
 	Major        string          `gorm:"type:varchar(100)" json:"major"`
+	TokenVersion int             `gorm:"default:1;not null" json:"-"`
 	Preferences  *UserPreference `gorm:"foreignKey:UserID" json:"preferences,omitempty"`
 }
 
@@ -192,6 +193,15 @@ type RefreshToken struct {
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 }
 
+type PasswordResetToken struct {
+	Base
+	UserID    uint       `gorm:"index;not null" json:"user_id"`
+	User      User       `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	TokenHash string     `gorm:"uniqueIndex;not null" json:"-"`
+	ExpiresAt time.Time  `gorm:"index;not null" json:"expires_at"`
+	UsedAt    *time.Time `gorm:"index" json:"used_at,omitempty"`
+}
+
 // ==================== MIGRATION HELPERS ====================
 
 func AllModels() []interface{} {
@@ -207,6 +217,7 @@ func AllModels() []interface{} {
 		&Notification{},
 		&MaterialPrediction{},
 		&RefreshToken{},
+		&PasswordResetToken{},
 	}
 }
 

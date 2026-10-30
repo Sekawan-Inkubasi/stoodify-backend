@@ -22,7 +22,7 @@ func RequireAuth() gin.HandlerFunc {
 			return
 		}
 
-		userID, _, err := token.Parse(bearer, token.TypeAccess)
+		userID, _, tokenVer, err := token.Parse(bearer, token.TypeAccess)
 		if err != nil {
 			response.Unauthorized(konteks, "token tidak valid atau sudah kedaluwarsa")
 			konteks.Abort()
@@ -32,6 +32,13 @@ func RequireAuth() gin.HandlerFunc {
 		var user migrations.User
 		if err := config.DB.WithContext(konteks.Request.Context()).First(&user, userID).Error; err != nil {
 			response.Unauthorized(konteks, "user dari token tidak ditemukan")
+			konteks.Abort()
+			return
+		}
+
+		// Validasi token_version: jika password diubah/direset, tokenVer lama tidak berlaku lagi
+		if user.TokenVersion > 0 && tokenVer != user.TokenVersion {
+			response.Unauthorized(konteks, "sesi telah kedaluwarsa karena perubahan password, silakan login kembali")
 			konteks.Abort()
 			return
 		}

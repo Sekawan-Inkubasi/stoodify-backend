@@ -29,15 +29,27 @@ type Issued struct {
 }
 
 type claims struct {
-	UserID uint   `json:"uid"`
-	Type   string `json:"typ"`
+	UserID       uint   `json:"uid"`
+	Type         string `json:"typ"`
+	TokenVersion int    `json:"ver,omitempty"`
 	jwt.RegisteredClaims
 }
 
-// Hash: DB tidak pernah menyimpan refresh token mentah, hanya SHA-256-nya.
+// Hash: DB tidak pernah menyimpan refresh/reset token mentah, hanya SHA-256-nya.
 func Hash(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
+}
+
+// GenerateRandomToken menghasilkan token acak berentropi tinggi 256-bit dan hash SHA-256-nya
+func GenerateRandomToken() (raw string, hash string, err error) {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", "", err
+	}
+	raw = hex.EncodeToString(b[:])
+	hash = Hash(raw)
+	return raw, hash, nil
 }
 
 func secret() []byte { return []byte(os.Getenv("JWT_SECRET")) }
@@ -50,12 +62,13 @@ func newJTI() string {
 	return hex.EncodeToString(b[:])
 }
 
-func sign(userID uint, typ string, ttl time.Duration) (Issued, error) {
+func sign(userID uint, typ string, ttl time.Duration, tokenVersion int) (Issued, error) {
 	now := time.Now()
 	jti := newJTI()
 	c := claims{
-		UserID: userID,
-		Type:   typ,
+		UserID:       userID,
+		Type:         typ,
+		TokenVersion: tokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti,
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -66,21 +79,25 @@ func sign(userID uint, typ string, ttl time.Duration) (Issued, error) {
 	return Issued{Token: signed, ExpiresAt: now.Add(ttl), JTI: jti}, err
 }
 
-func GenerateAccess(userID uint) (Issued, error)  { return sign(userID, TypeAccess, AccessTTL) }
-func GenerateRefresh(userID uint) (Issued, error) { return sign(userID, TypeRefresh, RefreshTTL) }
+func GenerateAccess(userID uint, tokenVersion int) (Issued, error) {
+	return sign(userID, TypeAccess, AccessTTL, tokenVersion)
+}
+func GenerateRefresh(userID uint, tokenVersion int) (Issued, error) {
+	return sign(userID, TypeRefresh, RefreshTTL, tokenVersion)
+}
 
 // Parse menolak semua kegagalan dengan satu sentinel error agar pemanggil
 // tidak membocorkan alasan penolakan. WithValidMethods memblokir alg=none.
-func Parse(tokenStr string, wantType string) (uint, string, error) {
+func Parse(tokenStr string, wantType string) (userID uint, jti string, tokenVersion int, err error) {
 	parsed, err := jwt.ParseWithClaims(tokenStr, &claims{}, func(*jwt.Token) (interface{}, error) {
 		return secret(), nil
 	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 	if err != nil || !parsed.Valid {
-		return 0, "", ErrInvalid
+		return 0, "", 0, ErrInvalid
 	}
 	c, ok := parsed.Claims.(*claims)
 	if !ok || c.Type != wantType || c.UserID == 0 {
-		return 0, "", ErrInvalid
+		return 0, "", 0, ErrInvalid
 	}
-	return c.UserID, c.ID, nil
+	return c.UserID, c.ID, c.TokenVersion, nil
 }

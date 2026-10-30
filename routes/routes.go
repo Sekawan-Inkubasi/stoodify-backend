@@ -1,13 +1,19 @@
 package routes
 
 import (
+	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"stoodify_backend/config"
 	ctrl "stoodify_backend/controllers"
 	"stoodify_backend/docs"
+	"stoodify_backend/internal/ratelimit"
 	"stoodify_backend/middlewares"
 )
 
@@ -34,9 +40,38 @@ const scalarHTML = `<!doctype html>
   </body>
 </html>`
 
+// ConfigureTrustedProxies mengatur trusted proxies pada engine Gin secara aman.
+// Jika env kosong atau nilai tidak valid, r akan disetel ke nil (tidak mempercayai header proxy).
+func ConfigureTrustedProxies(r *gin.Engine, trustedProxiesEnv string) error {
+	if trustedProxiesEnv == "" {
+		return r.SetTrustedProxies(nil)
+	}
+
+	proxies := strings.Split(trustedProxiesEnv, ",")
+	for i := range proxies {
+		proxies[i] = strings.TrimSpace(proxies[i])
+	}
+
+	if err := r.SetTrustedProxies(proxies); err != nil {
+		// Fail-safe: pastikan fallback ke nil agar tidak membiarkan default Gin (trust all) aktif
+		_ = r.SetTrustedProxies(nil)
+		return fmt.Errorf("konfigurasi TRUSTED_PROXIES tidak valid: %w", err)
+	}
+	return nil
+}
+
 func SetupRoutes() *gin.Engine {
 	r := gin.Default()
+
+	// Batasi proxy tepercaya: hanya percaya header XFF jika IP proxy dikonfigurasi dengan benar
+	if err := ConfigureTrustedProxies(r, os.Getenv("TRUSTED_PROXIES")); err != nil {
+		log.Printf("[SECURITY WARNING] %v; fallback ke SetTrustedProxies(nil)", err)
+	}
+
 	r.Use(middlewares.CORS())
+
+	// Rate limiter in-memory store
+	limiterStore := ratelimit.NewMemoryStore(2*time.Minute, 50000)
 
 	// OpenAPI Spec & Scalar Interactive Documentation
 	openapiHandler := func(c *gin.Context) {
@@ -102,8 +137,9 @@ func SetupRoutes() *gin.Engine {
 	sessionCtrl := ctrl.NewStudySessionController(config.DB)
 	statsCtrl := ctrl.NewStatisticsController(config.DB)
 
-	// Base API Group
+	// Base API Group (Limit umum: 60 req/menit)
 	api := r.Group("/api")
+	api.Use(middlewares.RateLimiter(limiterStore, 60, time.Minute, "api"))
 	{
 		api.GET("/", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
@@ -131,12 +167,15 @@ func SetupRoutes() *gin.Engine {
 		// ==========================================
 		// 1. AUTH GROUP (Sebagian Public, Sebagian Protected)
 		// ==========================================
+		authLimiter := middlewares.RateLimiter(limiterStore, 10, time.Minute, "auth")
 		auth := api.Group("/auth")
 		{
-			// Public (Tidak butuh token)
-			auth.POST("/register", authCtrl.Register)
-			auth.POST("/login", authCtrl.Login)
-			auth.POST("/refresh", authCtrl.Refresh) // Menerima refresh_token di body
+			// Public (Strict rate limit: 10 req/menit)
+			auth.POST("/register", authLimiter, authCtrl.Register)
+			auth.POST("/login", authLimiter, authCtrl.Login)
+			auth.POST("/refresh", authLimiter, authCtrl.Refresh) // Menerima refresh_token di body
+			auth.POST("/password-reset/request", authLimiter, authCtrl.PasswordResetRequest)
+			auth.POST("/password-reset/confirm", authLimiter, authCtrl.PasswordResetConfirm)
 
 			// Protected (Butuh Access Token valid)
 			authProtected := auth.Group("")
@@ -144,6 +183,7 @@ func SetupRoutes() *gin.Engine {
 			{
 				authProtected.GET("/me", authCtrl.Me)
 				authProtected.POST("/logout", authCtrl.Logout)
+				authProtected.POST("/password/change", authCtrl.ChangePassword)
 			}
 		}
 

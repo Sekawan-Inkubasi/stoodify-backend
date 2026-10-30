@@ -13,3 +13,4 @@ Panduan batasan keamanan keras (*hard limits*) untuk developer dan AI Agent.
 - **Masa Berlaku Access Token**: 15 Menit.
 - **Masa Berlaku Refresh Token**: 7 Hari (hanya hash token yang disimpan di tabel `refresh_tokens`).
 - **Password Hashing**: Bcrypt dengan work factor (cost) minimal 14.
+- **Password reset**: Untuk email terdaftar maupun tidak, endpoint request harus mengembalikan status dan body publik yang sama agar tidak membocorkan keberadaan akun. Implementasi saat ini **tidak menjamin kesetaraan waktu respons**; jangan mengklaim perlindungan timing side-channel. Jika mitigasi timing diperlukan, pindahkan lookup, pembuatan token, dan pengiriman email ke worker melalui durable outbox.

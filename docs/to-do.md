@@ -69,7 +69,8 @@ Dokumen ini merupakan daftar kerja terpadu (*single source of truth*) yang mengo
 
 - [ ] **13. [GAP-08] Silabus & Kurikulum Bertingkat (`RoadmapView`)**
   - Tabel `curriculum_topics` dan `user_topic_progress`.
+  - **Menunggu keputusan sumber data kurikulum dan dataset terkurasi; jangan mengisi katalog dengan topik tanpa sumber.**
 - [ ] **14. Fitur Autentikasi Lanjutan**
-  - Lupa password & reset password via email.
-  - Fitur ganti password akun.
-  - Rate limiting API.
+  - [ ] Lupa password & reset password via email — implementasi menunggu verifikasi integrasi PostgreSQL terisolasi dan review keamanan.
+  - [ ] Fitur ganti password akun — implementasi menunggu review keamanan yang sama.
+  - [x] Rate limiting API — implementasi mendapat PASS review Sentinel; konfigurasi `TRUSTED_PROXIES` perlu disiapkan sesuai lingkungan deployment.

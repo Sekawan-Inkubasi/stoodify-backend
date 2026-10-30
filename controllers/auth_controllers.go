@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	hashingPassword "stoodify_backend/internal/hashing_password"
+	"stoodify_backend/internal/mailer"
 	"stoodify_backend/internal/response"
 	"stoodify_backend/internal/token"
 	"stoodify_backend/middlewares"
@@ -24,11 +25,15 @@ func normalizeEmail(email string) string {
 }
 
 type AuthController struct {
-	DB *gorm.DB
+	DB     *gorm.DB
+	Mailer mailer.Mailer
 }
 
 func NewAuthController(db *gorm.DB) *AuthController {
-	return &AuthController{DB: db}
+	return &AuthController{
+		DB:     db,
+		Mailer: mailer.NewMailer(),
+	}
 }
 
 type RegisterInput struct {
@@ -50,6 +55,22 @@ type RefreshInput struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
+type PasswordResetRequestInput struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type PasswordResetConfirmInput struct {
+	Token           string `json:"token" binding:"required"`
+	Password        string `json:"password" binding:"required,min=8"`
+	ConfirmPassword string `json:"confirm_password" binding:"required"`
+}
+
+type ChangePasswordInput struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=8"`
+	ConfirmPassword string `json:"confirm_password" binding:"required"`
+}
+
 func (ctrl *AuthController) Register(konteks *gin.Context) {
 	var input RegisterInput
 	var existing migrations.User
@@ -61,7 +82,7 @@ func (ctrl *AuthController) Register(konteks *gin.Context) {
 
 	if input.Password != input.ConfirmPassword {
 		response.UnprocessableEntity(konteks, "password dan konfirmasi password tidak cocok", map[string]string{
-			"confirm_password": "password missmatch",
+			"confirm_password": "password mismatch",
 		})
 		return
 	}
@@ -94,6 +115,7 @@ func (ctrl *AuthController) Register(konteks *gin.Context) {
 		Email:        input.Email,
 		PasswordHash: hashed,
 		Role:         migrations.RoleStudent,
+		TokenVersion: 1,
 	}
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&user).Error; err != nil {
 		response.ServerError(konteks, err)
@@ -131,7 +153,12 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 		return
 	}
 
-	access, refresh, err := ctrl.issueTokens(konteks, user.ID)
+	tokenVer := user.TokenVersion
+	if tokenVer <= 0 {
+		tokenVer = 1
+	}
+
+	access, refresh, err := ctrl.issueTokens(konteks, user.ID, tokenVer)
 	if err != nil {
 		response.ServerError(konteks, err)
 		return
@@ -155,42 +182,81 @@ func (ctrl *AuthController) Refresh(konteks *gin.Context) {
 		return
 	}
 
-	userID, _, err := token.Parse(input.RefreshToken, token.TypeRefresh)
+	userID, _, tokenVerClaim, err := token.Parse(input.RefreshToken, token.TypeRefresh)
 	if err != nil {
 		response.Unauthorized(konteks, "refresh token tidak valid atau sudah kedaluwarsa")
 		return
 	}
 
-	var stored migrations.RefreshToken
-	err = ctrl.DB.WithContext(konteks.Request.Context()).
-		Where("token_hash = ?", token.Hash(input.RefreshToken)).First(&stored).Error
-	if err != nil || stored.RevokedAt != nil || stored.UserID != userID || stored.ExpiresAt.Before(time.Now()) {
-		response.Unauthorized(konteks, "refresh token sudah tidak berlaku")
-		return
-	}
-
-	var user migrations.User
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).First(&user, userID).Error; err != nil {
-		response.Unauthorized(konteks, "user dari token tidak ditemukan")
-		return
-	}
-
-	// Rotasi: token lama langsung dicabut; kalau gagal, jangan terbitkan yang baru.
+	var newAccess, newRefresh token.Issued
 	now := time.Now()
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).Model(&stored).Update("revoked_at", now).Error; err != nil {
-		response.ServerError(konteks, err)
-		return
-	}
+	tokenHash := token.Hash(input.RefreshToken)
 
-	access, refresh, err := ctrl.issueTokens(konteks, user.ID)
+	err = ctrl.DB.WithContext(konteks.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		// 1. Secara atomik cabut refresh token lama dengan syarat belum dicabut dan belum expired
+		res := tx.Model(&migrations.RefreshToken{}).
+			Where("token_hash = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > ?", tokenHash, userID, now).
+			Update("revoked_at", now)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errors.New("token_revoked_or_invalid")
+		}
+
+		// 2. Ambil data user dalam transaksi untuk validasi token_version
+		var user migrations.User
+		if err := tx.First(&user, userID).Error; err != nil {
+			return err
+		}
+
+		userTokenVer := user.TokenVersion
+		if userTokenVer <= 0 {
+			userTokenVer = 1
+		}
+
+		// Jika versi token tidak sesuai (misal telah direset/diganti password), tolak rotasi
+		if tokenVerClaim != 0 && tokenVerClaim != userTokenVer {
+			return errors.New("token_version_mismatch")
+		}
+
+		// 3. Terbitkan access & refresh token baru yang terikat token_version user
+		access, err := token.GenerateAccess(user.ID, userTokenVer)
+		if err != nil {
+			return err
+		}
+		refresh, err := token.GenerateRefresh(user.ID, userTokenVer)
+		if err != nil {
+			return err
+		}
+
+		// 4. Catat refresh token baru di database
+		newRecord := migrations.RefreshToken{
+			UserID:    user.ID,
+			TokenHash: token.Hash(refresh.Token),
+			ExpiresAt: refresh.ExpiresAt,
+		}
+		if err := tx.Create(&newRecord).Error; err != nil {
+			return err
+		}
+
+		newAccess = access
+		newRefresh = refresh
+		return nil
+	})
+
 	if err != nil {
+		if err.Error() == "token_revoked_or_invalid" || err.Error() == "token_version_mismatch" {
+			response.Unauthorized(konteks, "refresh token sudah tidak berlaku")
+			return
+		}
 		response.ServerError(konteks, err)
 		return
 	}
 
 	response.OK(konteks, "token diperbarui", gin.H{
-		"access_token":  access.Token,
-		"refresh_token": refresh.Token,
+		"access_token":  newAccess.Token,
+		"refresh_token": newRefresh.Token,
 		"token_type":    "Bearer",
 		"expires_in":    int(token.AccessTTL.Seconds()),
 	})
@@ -223,12 +289,192 @@ func (ctrl *AuthController) Me(konteks *gin.Context) {
 	response.OK(konteks, "data user", middlewares.MustUser(konteks))
 }
 
-func (ctrl *AuthController) issueTokens(konteks *gin.Context, userID uint) (token.Issued, token.Issued, error) {
-	access, err := token.GenerateAccess(userID)
+// PasswordResetRequest menangani permintaan reset password publik
+func (ctrl *AuthController) PasswordResetRequest(konteks *gin.Context) {
+	var input PasswordResetRequestInput
+	if err := konteks.ShouldBindJSON(&input); err != nil {
+		response.ValidationError(konteks, err)
+		return
+	}
+
+	email := normalizeEmail(input.Email)
+	var user migrations.User
+	err := ctrl.DB.WithContext(konteks.Request.Context()).Where("email = ?", email).First(&user).Error
+
+	// Selalu kembalikan respons generik yang sama apakah email terdaftar atau tidak (mencegah enumerasi akun)
+	genericMsg := "Jika email terdaftar, instruksi reset password telah dikirimkan ke email Anda."
+
+	rawToken, hash, errGen := token.GenerateRandomToken()
+	if errGen != nil {
+		response.ServerError(konteks, errGen)
+		return
+	}
+	if err == nil {
+		// Simpan hanya hash token di database dengan masa berlaku 15 menit
+		resetRecord := migrations.PasswordResetToken{
+			UserID:    user.ID,
+			TokenHash: hash,
+			ExpiresAt: time.Now().Add(15 * time.Minute),
+		}
+		if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&resetRecord).Error; err == nil {
+			// Kirim via mailer secara async (token mentah tidak pernah dicatat di log atau respons)
+			if ctrl.Mailer != nil {
+				go func() {
+					_ = ctrl.Mailer.SendPasswordReset(user.Email, rawToken)
+				}()
+			}
+		}
+	} else {
+		// Jalur simetris: jalankan dummy DB query dan goroutine tiruan
+		// agar beban kerja, round-trip DB, dan goroutine kedua jalur seimbang
+		var dummy migrations.PasswordResetToken
+		_ = ctrl.DB.WithContext(konteks.Request.Context()).Where("token_hash = ?", hash).First(&dummy).Error
+		go func() {
+			_ = rawToken
+		}()
+	}
+
+	response.OK(konteks, genericMsg, nil)
+}
+
+// PasswordResetConfirm mereset password menggunakan token yang valid dan belum terpakai
+func (ctrl *AuthController) PasswordResetConfirm(konteks *gin.Context) {
+	var input PasswordResetConfirmInput
+	if err := konteks.ShouldBindJSON(&input); err != nil {
+		response.ValidationError(konteks, err)
+		return
+	}
+
+	if input.Password != input.ConfirmPassword {
+		response.UnprocessableEntity(konteks, "password dan konfirmasi password tidak cocok", map[string]string{
+			"confirm_password": "password mismatch",
+		})
+		return
+	}
+
+	tokenHash := token.Hash(input.Token)
+	now := time.Now()
+
+	err := ctrl.DB.WithContext(konteks.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		var resetRecord migrations.PasswordResetToken
+		if err := tx.Where("token_hash = ? AND used_at IS NULL AND expires_at > ?", tokenHash, now).First(&resetRecord).Error; err != nil {
+			return errors.New("token_invalid")
+		}
+
+		// Tandai token reset telah digunakan secara atomik dengan syarat used_at IS NULL
+		res := tx.Model(&migrations.PasswordResetToken{}).
+			Where("id = ? AND used_at IS NULL", resetRecord.ID).
+			Update("used_at", now)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errors.New("token_invalid")
+		}
+
+		// Hash password baru dengan bcrypt cost 14
+		hashed, err := hashingPassword.HashPassword(input.Password)
+		if err != nil {
+			return err
+		}
+
+		// Update password hash dan naikkan token_version agar access token lama invalid
+		if err := tx.Model(&migrations.User{}).Where("id = ?", resetRecord.UserID).
+			Updates(map[string]interface{}{
+				"password_hash": hashed,
+				"token_version": gorm.Expr("token_version + 1"),
+			}).Error; err != nil {
+			return err
+		}
+
+		// Cabut seluruh refresh token aktif milik user
+		if err := tx.Model(&migrations.RefreshToken{}).
+			Where("user_id = ? AND revoked_at IS NULL", resetRecord.UserID).
+			Update("revoked_at", now).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		if err.Error() == "token_invalid" {
+			response.BadRequest(konteks, "token reset password tidak valid atau sudah kedaluwarsa", nil)
+			return
+		}
+		response.ServerError(konteks, err)
+		return
+	}
+
+	response.OK(konteks, "password berhasil direset, silakan login dengan password baru", nil)
+}
+
+// ChangePassword mengganti password untuk user terautentikasi dan membatalkan seluruh sesi lama
+func (ctrl *AuthController) ChangePassword(konteks *gin.Context) {
+	var input ChangePasswordInput
+	if err := konteks.ShouldBindJSON(&input); err != nil {
+		response.ValidationError(konteks, err)
+		return
+	}
+
+	if input.NewPassword != input.ConfirmPassword {
+		response.UnprocessableEntity(konteks, "password baru dan konfirmasi password tidak cocok", map[string]string{
+			"confirm_password": "password mismatch",
+		})
+		return
+	}
+
+	user := middlewares.MustUser(konteks)
+
+	// Verifikasi password saat ini
+	if !hashingPassword.CheckPasswordHash(input.CurrentPassword, user.PasswordHash) {
+		response.BadRequest(konteks, "password saat ini salah", map[string]string{
+			"current_password": "password salah",
+		})
+		return
+	}
+
+	hashed, err := hashingPassword.HashPassword(input.NewPassword)
+	if err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	now := time.Now()
+	err = ctrl.DB.WithContext(konteks.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		// Update password & increment token_version
+		if err := tx.Model(&migrations.User{}).Where("id = ?", user.ID).
+			Updates(map[string]interface{}{
+				"password_hash": hashed,
+				"token_version": gorm.Expr("token_version + 1"),
+			}).Error; err != nil {
+			return err
+		}
+
+		// Cabut seluruh refresh token aktif
+		if err := tx.Model(&migrations.RefreshToken{}).
+			Where("user_id = ? AND revoked_at IS NULL", user.ID).
+			Update("revoked_at", now).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	response.OK(konteks, "password berhasil diubah, seluruh sesi lama telah dicabut", nil)
+}
+
+func (ctrl *AuthController) issueTokens(konteks *gin.Context, userID uint, tokenVersion int) (token.Issued, token.Issued, error) {
+	access, err := token.GenerateAccess(userID, tokenVersion)
 	if err != nil {
 		return token.Issued{}, token.Issued{}, err
 	}
-	refresh, err := token.GenerateRefresh(userID)
+	refresh, err := token.GenerateRefresh(userID, tokenVersion)
 	if err != nil {
 		return token.Issued{}, token.Issued{}, err
 	}
