@@ -84,10 +84,10 @@ func runServe(args []string) {
 	}
 }
 
-// runMigrate: jalankan AutoMigrate + index kinerja. Opsional seed.
 func runMigrate(args []string) {
 	fs := flag.NewFlagSet("migrate", flag.ExitOnError)
 	withSeed := fs.Bool("seed", false, "jalankan seeder setelah migrate")
+	withDemo := fs.Bool("demo", false, "jalankan seeder akun demo setelah migrate")
 	users := fs.Int("users", defaultUsers, "jumlah user siswa (jika --seed)")
 	tasks := fs.Int("tasks", defaultTasks, "jumlah tugas per user (jika --seed)")
 	fs.Usage = func() { printMigrateHelp(fs) }
@@ -103,12 +103,15 @@ func runMigrate(args []string) {
 	if *withSeed {
 		seeder.Run(db, seeder.Config{Users: *users, Tasks: *tasks})
 	}
+	if *withDemo {
+		seeder.SeedDemo(db)
+	}
 }
 
-// runMigrateFresh: drop semua tabel, migrate ulang, opsional seed.
 func runMigrateFresh(args []string) {
 	fs := flag.NewFlagSet("migrate:fresh", flag.ExitOnError)
-	withSeed := fs.Bool("seed", false, "jalankan seeder setelah migrate")
+	withSeed := fs.Bool("seed", false, "jalankan seeder sintetis setelah migrate")
+	withDemo := fs.Bool("demo", false, "jalankan seeder akun demo setelah migrate")
 	users := fs.Int("users", defaultUsers, "jumlah user siswa (jika --seed)")
 	tasks := fs.Int("tasks", defaultTasks, "jumlah tugas per user (jika --seed)")
 	fs.Usage = func() { printMigrateFreshHelp(fs) }
@@ -129,11 +132,14 @@ func runMigrateFresh(args []string) {
 	if *withSeed {
 		seeder.Run(db, seeder.Config{Users: *users, Tasks: *tasks})
 	}
+	if *withDemo {
+		seeder.SeedDemo(db)
+	}
 }
 
-// runSeed: isi database dengan data sintetis.
 func runSeed(args []string) {
 	fs := flag.NewFlagSet("seed", flag.ExitOnError)
+	demo := fs.Bool("demo", false, "isi akun demo (Muhammad Naufal Rafa Al As'ad / naufal@student.id)")
 	users := fs.Int("users", defaultUsers, "jumlah user siswa")
 	tasks := fs.Int("tasks", defaultTasks, "jumlah tugas per user")
 	reset := fs.Bool("reset", false, "hapus data seed lama dulu")
@@ -141,11 +147,17 @@ func runSeed(args []string) {
 	fs.Usage = func() { printSeedHelp(fs) }
 	fs.Parse(args)
 
+	db := config.KonekKeDB()
+
+	if *demo {
+		seeder.SeedDemo(db)
+		return
+	}
+
 	if *users < 1 || *tasks < 1 {
 		log.Fatal("users dan tasks harus >= 1")
 	}
 
-	db := config.KonekKeDB()
 	seeder.Run(db, seeder.Config{
 		Users: *users,
 		Tasks: *tasks,
@@ -167,8 +179,8 @@ Usage:
 Commands:
   serve          Jalankan HTTP server + scheduler (default)
   migrate        Jalankan migrasi database (AutoMigrate + index kinerja)
-  migrate:fresh  Drop semua tabel lalu migrasi ulang
-  seed           Isi database dengan data sintetis untuk uji Mobile Dev
+  migrate:fresh  Drop semua tabel lalu migrasi ulang (opsional --seed atau --demo)
+  seed           Isi database dengan data sintetis atau akun demo
   help           Tampilkan bantuan ini
 
 Global flags:
@@ -176,17 +188,14 @@ Global flags:
 
 Contoh:
   stoodify serve
-  stoodify serve --port=9090
   stoodify migrate
-  stoodify migrate --seed --users=50 --tasks=40
-  stoodify migrate:fresh --seed
-  stoodify seed --users=200 --tasks=100 --reset
-  stoodify seed --quiet
-  stoodify migrate --help
+  stoodify migrate:fresh
+  stoodify migrate:fresh --demo
+  stoodify seed --demo
+  stoodify seed --users=50 --tasks=40 --reset
 
-Akun uji setelah seed:
-  admin  : admin@stoodify.seed / rahasia123
-  siswa  : user001@stoodify.seed s.d. userNNN@stoodify.seed / rahasia123
+Akun demo:
+  naufal@student.id / password123
 `)
 }
 
