@@ -117,6 +117,8 @@ func SetupRoutes() *gin.Engine {
 		})
 	})
 
+	r.Static("/uploads", "./uploads")
+
 	r.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -200,6 +202,7 @@ func SetupRoutes() *gin.Engine {
 			{
 				users.GET("/me", userCtrl.GetMe)
 				users.PATCH("/me", userCtrl.UpdateMe)
+				users.POST("/avatar", userCtrl.UploadAvatar)
 				users.POST("/change-password", authCtrl.ChangePassword)
 				users.GET("/me/preferences", userCtrl.GetPreferences)
 				users.PATCH("/me/preferences", userCtrl.UpdatePreferences)

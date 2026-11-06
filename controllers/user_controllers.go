@@ -2,6 +2,12 @@ package controllers
 
 import (
 	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -137,4 +143,59 @@ func (ctrl *UserController) UpdatePreferences(konteks *gin.Context) {
 		return
 	}
 	response.OK(konteks, "preferensi diperbarui", pref)
+}
+
+func (ctrl *UserController) UploadAvatar(konteks *gin.Context) {
+	user := currentUser(konteks)
+
+	file, header, err := konteks.Request.FormFile("avatar")
+	if err != nil {
+		response.Fail(konteks, 400, "file avatar wajib diunggah", nil)
+		return
+	}
+	defer file.Close()
+
+	if header.Size > 2*1024*1024 {
+		response.Fail(konteks, 400, "ukuran file avatar maksimal 2MB", nil)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+		response.Fail(konteks, 400, "format avatar harus JPG, JPEG, PNG, atau WEBP", nil)
+		return
+	}
+
+	uploadDir := "uploads/avatars"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	filename := fmt.Sprintf("avatar_%d_%d%s", user.ID, time.Now().Unix(), ext)
+	targetPath := filepath.Join(uploadDir, filename)
+
+	out, err := os.Create(targetPath)
+	if err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, file); err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	avatarURL := fmt.Sprintf("/uploads/avatars/%s", filename)
+	user.AvatarURL = avatarURL
+
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).Model(&user).Update("avatar_url", avatarURL).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	response.OK(konteks, "avatar berhasil diperbarui", gin.H{
+		"avatar_url": avatarURL,
+	})
 }

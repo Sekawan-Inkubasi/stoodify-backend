@@ -26,6 +26,57 @@ type overviewStats struct {
 	OnTimeRate     float64 `json:"on_time_rate"`
 	TotalStudyMins int64   `json:"total_study_minutes"`
 	TotalSubjects  int64   `json:"total_subjects"`
+	StreakDays     int     `json:"streak_days"`
+}
+
+func (ctrl *StatisticsController) calculateStreak(ctx *gin.Context, userID uint) int {
+	type activityDate struct {
+		ActDate string
+	}
+	var dates []activityDate
+
+	query := `
+		SELECT to_char(d, 'YYYY-MM-DD') as act_date FROM (
+			SELECT updated_at as d FROM tasks WHERE user_id = ? AND status = 'done'
+			UNION
+			SELECT session_date as d FROM study_sessions WHERE user_id = ? AND status = 'completed'
+		) combined
+		GROUP BY act_date
+		ORDER BY act_date DESC
+		LIMIT 60
+	`
+	ctrl.DB.WithContext(ctx.Request.Context()).Raw(query, userID, userID).Scan(&dates)
+
+	if len(dates) == 0 {
+		return 0
+	}
+
+	today := time.Now().Format("2006-01-02")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+
+	if dates[0].ActDate != today && dates[0].ActDate != yesterday {
+		return 0
+	}
+
+	streak := 1
+	currentParsed, _ := time.Parse("2006-01-02", dates[0].ActDate)
+
+	for i := 1; i < len(dates); i++ {
+		prevParsed, _ := time.Parse("2006-01-02", dates[i].ActDate)
+		diffDays := int(currentParsed.Sub(prevParsed).Hours() / 24)
+
+		if diffDays == 1 {
+			streak++
+			currentParsed = prevParsed
+		} else if diffDays <= 2 && (currentParsed.Weekday() == time.Monday || currentParsed.Weekday() == time.Sunday) {
+			streak++
+			currentParsed = prevParsed
+		} else {
+			break
+		}
+	}
+
+	return streak
 }
 
 func (ctrl *StatisticsController) GetOverview(konteks *gin.Context) {
@@ -54,6 +105,8 @@ func (ctrl *StatisticsController) GetOverview(konteks *gin.Context) {
 	if finished > 0 {
 		stats.OnTimeRate = float64(stats.DoneTasks) / float64(finished) * 100
 	}
+
+	stats.StreakDays = ctrl.calculateStreak(konteks, user.ID)
 
 	response.OK(konteks, "ringkasan statistik", stats)
 }

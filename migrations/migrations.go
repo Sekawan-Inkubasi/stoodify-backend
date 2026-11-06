@@ -58,6 +58,7 @@ type User struct {
 	School       string          `gorm:"type:varchar(150);" json:"school"`
 	Grade        int8            `gorm:"type:smallint" json:"grade"`
 	Major        string          `gorm:"type:varchar(100)" json:"major"`
+	AvatarURL    string          `gorm:"type:varchar(255)" json:"avatar_url"`
 	TokenVersion int             `gorm:"default:1;not null" json:"-"`
 	Preferences  *UserPreference `gorm:"foreignKey:UserID" json:"preferences,omitempty"`
 }
