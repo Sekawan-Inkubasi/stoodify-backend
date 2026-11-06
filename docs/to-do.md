@@ -74,3 +74,25 @@ Dokumen ini merupakan daftar kerja terpadu (*single source of truth*) yang mengo
   - [ ] Lupa password & reset password via email — implementasi menunggu verifikasi integrasi PostgreSQL terisolasi dan review keamanan.
   - [x] Fitur ganti password akun — implementasi selesai (`POST /api/users/change-password`), bcrypt hashing & revokasi seluruh active session (`token_version++` dan pembatalan refresh token).
   - [x] Rate limiting API — implementasi mendapat PASS review Sentinel; konfigurasi `TRUSTED_PROXIES` perlu disiapkan sesuai lingkungan deployment.
+
+---
+
+## 🎨 TAHAP 5: QA Polish & Mobile Native Integration (Pembaruan Terkini)
+*Implementasi hasil audit komprehensif mobile-backend-AI:*
+
+- [x] **15. Integrasi Foto Profil Siswa (Profile Picture / Avatar)**
+  - *Backend:* Kolom `avatar_url` pada skema `users` (`migrations/migrations.go`), handler upload `POST /api/users/avatar` (`controllers/user_controllers.go`), serta serving static `/uploads` di `routes/routes.go`.
+  - *Mobile:* File picker galeri/kamera di `ProfileView.tsx`, upload service via multipart, dynamic avatar rendering dengan initial fallback ("SS") tanpa foto hardcoded orang asing.
+- [x] **16. Educational-Friendly Streak Calculation**
+  - *Backend:* Algoritma `calculateStreak` di `StatisticsController.GetOverview` (`streak_days`) berbasis kontinuitas penyelesaian tugas & sesi fokus dengan *weekend grace period*.
+  - *Mobile:* Tampilan streak harian dinamis di HomeView dan ProfileView.
+- [x] **17. Mobile Interaction & Touch Support**
+  - *Mobile:* Penghapusan CSS desktop-only hover (`opacity-0 group-hover:opacity-100`) pada tombol hapus jadwal di `CalendarView.tsx`, menjadikan kontrol selalu terlihat dan dapat disentuh di HP.
+- [x] **18. Optimasi Performa Popup & Modal**
+  - *Mobile:* Eliminasi dynamic `backdrop-filter` transition di `src/index.css`, penyederhanaan animasi `.modal-enter-smooth` ke hardware-accelerated translateY tanpa modulasi scale, dan pengurangan drop-shadow berlebih pada drawer chatbot.
+- [x] **19. Pencegahan Text Overflow**
+  - *Mobile:* Penambahan `min-w-0`, `truncate`, dan penyesuaian flex layout pada nama mapel, badge status tugas di `TasksView.tsx`, kartu prioritas `HomeView.tsx`, dan filter pill `AIPlanView.tsx`.
+- [x] **20. Konsistensi Ikon (Pembersihan Emoji)**
+  - *Mobile:* Penggantian 100% 29 emoji unicode mentah di 9 file UI dengan icon semantik SVG dari `lucide-react` (`Zap`, `Flame`, `CheckCircle2`, `Clock`, `Sparkles`, `PartyPopper`, dll).
+- [x] **21. Wiring Microservice AI-1**
+  - *Backend & AI-1:* Sinkronisasi API Key dan endpoint `AI_SCHEDULER_URL=http://127.0.0.1:8000/schedule` pada `.env` serta verifikasi flow rescheduling adaptif.

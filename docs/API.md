@@ -215,10 +215,36 @@ Error:
 | Method | Path | Fungsi |
 |---|---|---|
 | GET | `/users/me` | Ambil profil sendiri |
-| PATCH | `/users/me` | Ubah nama / email |
+| PATCH | `/users/me` | Ubah nama / email / sekolah / grade / major |
+| POST | `/users/avatar` | Unggah foto profil siswa (multipart/form-data, maks 2MB, JPG/PNG/WEBP) |
 | POST | `/users/change-password` | Ganti password akun & cabut seluruh sesi lama |
 | GET | `/users/me/preferences` | Ambil preferensi belajar |
 | PATCH | `/users/me/preferences` | Simpan preferensi belajar |
+
+### Contoh: Unggah Foto Profil (Avatar)
+
+```http
+POST /api/users/avatar
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+Payload (Form-Data):
+- `avatar`: file gambar (JPG, JPEG, PNG, WEBP, maks 2MB)
+
+Response: `200 OK`
+```json
+{
+  "success": true,
+  "message": "avatar berhasil diperbarui",
+  "data": {
+    "avatar_url": "/uploads/avatars/avatar_55_1793933940.jpg"
+  }
+}
+```
+
+File statis avatar dapat diakses publik melalui:
+`GET http://localhost:8080/uploads/avatars/...`
 
 ### Contoh: ganti password akun
 
@@ -608,7 +634,7 @@ Untuk dashboard siswa.
 
 | Method | Path | Isi data |
 |---|---|---|
-| GET | `/statistics/overview` | Total tugas, selesai, terlambat, % tepat waktu, total jam belajar, jumlah mapel |
+| GET | `/statistics/overview` | Total tugas, selesai, terlambat, % tepat waktu, total jam belajar, jumlah mapel, streak aktif |
 | GET | `/statistics/weekly` | Sama, untuk 7 hari terakhir |
 | GET | `/statistics/monthly` | Sama, untuk 30 hari terakhir |
 | GET | `/statistics/subjects` | Rincian per mapel (total/selesai/terlambat + rata-rata skor) |
@@ -622,9 +648,12 @@ Untuk dashboard siswa.
   "pending_tasks": 3,
   "on_time_rate": 77.78,
   "total_study_minutes": 540,
-  "total_subjects": 4
+  "total_subjects": 4,
+  "streak_days": 3
 }
 ```
+
+💡 **Catatan Streak:** Dihitung dari kontinuitas hari aktif (tugas selesai atau sesi belajar selesai) dengan *weekend grace period* (toleransi akhir pekan agar streak tidak mudah putus pada siswa).
 
 ---
 
