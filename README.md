@@ -110,7 +110,7 @@ Semua developer dan AI Agent yang berkontribusi pada repository ini **sangat dis
 1. **[`docs/CONTEXT.md`](docs/CONTEXT.md)**: **Konteks Bisnis & Target Pengguna.** Memahami visi Stoodify untuk siswa SMP/SMA/SMK Indonesia, alur demonstrasi, dan timeline inkubasi.
 2. **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**: **Arsitektur Sistem & Domain Boundaries.** Memahami pemisahan layer, multi-tenant isolation berbasis `user_id`, serta siklus hidup request.
 3. **[`docs/API.md`](docs/API.md)**: **Katalog Lengkap REST API.** Kontrak endpoint publik, header Authorization Bearer, format payload, upload avatar, dan respons JSON.
-4. **[`docs/AI_CONTRACT.md`](docs/AI_CONTRACT.md)**: **Kontrak Integrasi AI Engine.** Spesifikasi payload bridge antara backend Go dan microservice Python FastAPI (`stoodify-ai-1`) untuk Adaptive Rescheduling.
+4. **[`docs/AI_CONTRACT.md`](docs/AI_CONTRACT.md)**: **Kontrak Integrasi AI Engine.** Spesifikasi payload bridge antara backend Go dan microservice Python FastAPI (`stoodify-ai-1`) untuk Adaptive Rescheduling (`/schedule`) dan Material Prediction (`/predict`).
 
 ### 📐 Standar Koding & Database
 5. **[`docs/CONVENTIONS.md`](docs/CONVENTIONS.md)**: **Konvensi Kode & Response Format.** Aturan standard error response, Gin binding tag, validasi input, dan struktur controller.
