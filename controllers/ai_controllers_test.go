@@ -82,7 +82,7 @@ func TestParsePredictorResponseBentukRespons(t *testing.T) {
 
 	t.Run("tanpa topik dianggap gagal", func(t *testing.T) {
 		if _, ok := parsePredictorResponse(json.RawMessage(`{"confidence":90}`)); ok {
-			t.Error("respons tanpa predicted_topic seharusnya gagal agar fallback jalan")
+			t.Error("respons tanpa predicted_topic seharusnya dianggap gagal (tidak ada prediksi lokal)")
 		}
 	})
 }

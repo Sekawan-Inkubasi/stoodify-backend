@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -53,7 +52,7 @@ type slotRekomendasi struct {
 	Reason          string `json:"reason"`
 }
 
-// GenerateSchedule memanggil AI Spec 1; kalau AI gagal/timeout, pakai fallback rule-based.
+// GenerateSchedule memanggil AI Spec 1
 func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 	user := currentUser(konteks)
 	var input GenerateScheduleInput
@@ -122,8 +121,8 @@ func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 		return
 	}
 
-	slots, source := ctrl.panggilAIScheduler(konteks, user.ID, targetDate, tasks, pref, schedules, activities, existingSessions)
-	if source == "" {
+	slots, ok := ctrl.panggilAIScheduler(konteks, user.ID, targetDate, tasks, pref, schedules, activities, existingSessions)
+	if !ok {
 		response.Fail(konteks, 502, "layanan AI tidak dapat dihubungi, silakan coba lagi", nil)
 		return
 	}
@@ -171,11 +170,12 @@ func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 		return
 	}
 
-	response.Created(konteks, "rekomendasi sesi belajar dibuat ("+source+")", sessions)
+	response.Created(konteks, "rekomendasi sesi belajar dibuat", sessions)
 }
 
-// panggilAIScheduler: coba AI Spec 1 dulu, fallback ke time-slot finder lokal.
-// Mengembalikan (slots, sumber); sumber kosong = AI gagal DAN fallback dimatikan.
+// panggilAIScheduler memanggil AI Spec 1 dan mengembalikan (slots, ok).
+// ok=false berarti AI tidak bisa dipakai (URL kosong, error, timeout, atau respons kosong);
+// backend tidak punya jalur fallback lokal.
 func (ctrl *AIController) panggilAIScheduler(
 	konteks *gin.Context,
 	userID uint,
@@ -185,7 +185,7 @@ func (ctrl *AIController) panggilAIScheduler(
 	schedules []migrations.Schedule,
 	activities []migrations.Activity,
 	existingSessions []migrations.StudySession,
-) ([]slotRekomendasi, string) {
+) ([]slotRekomendasi, bool) {
 	url := os.Getenv("AI_SCHEDULER_URL")
 	if url != "" {
 		breakDuration := pref.BreakDuration
@@ -217,15 +217,12 @@ func (ctrl *AIController) panggilAIScheduler(
 		var raw json.RawMessage
 		if err := postJSON(konteks.Request.Context(), url, payload, &raw); err == nil {
 			if slots := parseSchedulerResponse(raw); len(slots) > 0 {
-				return slots, "ai"
+				return slots, true
 			}
 		}
 	}
 
-	if os.Getenv("AI_FALLBACK_ENABLED") == "false" {
-		return nil, ""
-	}
-	return fallbackSlots(date, tasks, pref), "fallback rule-based"
+	return nil, false
 }
 
 // aiSlotRaw adalah bentuk mentah slot dari service AI. Service AI boleh memakai
@@ -290,59 +287,6 @@ func parseSchedulerResponse(raw json.RawMessage) []slotRekomendasi {
 			Priority:        r.Priority,
 			Reason:          r.Reason,
 		})
-	}
-	return slots
-}
-
-// fallbackSlots membagi tugas terprioritas ke slot kosong antara start-end preferensi.
-func fallbackSlots(date time.Time, tasks []migrations.Task, pref migrations.UserPreference) []slotRekomendasi {
-	dayStart := hhmmMinutes(pref.StartTime)
-	dayEnd := hhmmMinutes(pref.EndTime)
-	if dayStart < 0 || dayEnd < 0 || dayStart >= dayEnd {
-		return nil
-	}
-
-	ordered := make([]migrations.Task, len(tasks))
-	copy(ordered, tasks)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		return ordered[i].PriorityScore > ordered[j].PriorityScore
-	})
-
-	duration := pref.SessionDuration
-	if duration <= 0 {
-		duration = 60
-	}
-
-	var slots []slotRekomendasi
-	cursor := dayStart
-	for _, task := range ordered {
-		if cursor+duration > dayEnd {
-			break
-		}
-		remaining := 100 - task.Progress
-		target := 30
-		if remaining < target {
-			target = remaining
-		}
-		urgency := "low"
-		if task.PriorityScore >= 70 {
-			urgency = "high"
-		} else if task.PriorityScore >= 40 {
-			urgency = "medium"
-		}
-
-		slots = append(slots, slotRekomendasi{
-			TaskID:          task.ID,
-			RecommendedDate: date.Format("2006-01-02"),
-			StartTime:       minutesToHHMM(cursor),
-			EndTime:         minutesToHHMM(cursor + duration),
-			Duration:        duration,
-			TargetProgress:  target,
-			Priority:        urgency,
-			Reason: fmt.Sprintf("Skor prioritas %.0f, deadline %s, progres baru %d%%",
-				task.PriorityScore, task.Deadline.Format("02 Jan 2006"), task.Progress),
-		})
-		cursor += duration
 	}
 	return slots
 }
@@ -481,8 +425,8 @@ func (ctrl *AIController) GeneratePrediction(konteks *gin.Context) {
 		return
 	}
 
-	prediction, source := ctrl.panggilAIPredictor(konteks, user, subject, history)
-	if source == "" {
+	prediction, ok := ctrl.panggilAIPredictor(konteks, user, subject, history)
+	if !ok {
 		response.Fail(konteks, 502, "layanan AI tidak dapat dihubungi, silakan coba lagi", nil)
 		return
 	}
@@ -501,7 +445,7 @@ func (ctrl *AIController) GeneratePrediction(konteks *gin.Context) {
 		return
 	}
 
-	response.Created(konteks, "prediksi materi dibuat ("+source+")", record)
+	response.Created(konteks, "prediksi materi dibuat", record)
 }
 
 type hasilPrediksi struct {
@@ -512,7 +456,9 @@ type hasilPrediksi struct {
 	Preparation       string  `json:"preparation_suggestion"`
 }
 
-func (ctrl *AIController) panggilAIPredictor(konteks *gin.Context, user migrations.User, subject migrations.Subject, history []migrations.Task) (hasilPrediksi, string) {
+// panggilAIPredictor memanggil AI Spec 2 dan mengembalikan (hasil, ok).
+// ok=false berarti AI tidak bisa dipakai; tidak ada prediksi rule-based lokal.
+func (ctrl *AIController) panggilAIPredictor(konteks *gin.Context, user migrations.User, subject migrations.Subject, history []migrations.Task) (hasilPrediksi, bool) {
 	url := os.Getenv("AI_PREDICTOR_URL")
 	if url != "" {
 		payload := gin.H{
@@ -526,15 +472,12 @@ func (ctrl *AIController) panggilAIPredictor(konteks *gin.Context, user migratio
 		var raw json.RawMessage
 		if err := postJSON(konteks.Request.Context(), url, payload, &raw); err == nil {
 			if hasil, ok := parsePredictorResponse(raw); ok {
-				return hasil, "ai"
+				return hasil, true
 			}
 		}
 	}
 
-	if os.Getenv("AI_FALLBACK_ENABLED") == "false" {
-		return hasilPrediksi{}, ""
-	}
-	return fallbackPrediction(subject, history), "fallback rule-based"
+	return hasilPrediksi{}, false
 }
 
 // aiPrediksiRaw adalah bentuk mentah respons AI Predictor. Mendukung penamaan
@@ -611,23 +554,6 @@ func joinPrerequisites(raw json.RawMessage) string {
 		return single
 	}
 	return ""
-}
-
-// fallbackPrediction: tanpa LLM, prediksi memakai judul tugas terakhir mapel itu.
-func fallbackPrediction(subject migrations.Subject, history []migrations.Task) hasilPrediksi {
-	reason := "Belum ada riwayat tugas pada mata pelajaran ini"
-	topic := "Materi lanjutan " + subject.Name
-	if len(history) > 0 {
-		reason = fmt.Sprintf("Berdasarkan %d tugas terakhir: %s", len(history), history[0].Title)
-		topic = "Lanjutan dari " + history[0].Title
-	}
-	return hasilPrediksi{
-		PredictedMaterial: topic,
-		Confidence:        35,
-		Reason:            reason,
-		Prerequisites:     subject.Name + " dasar",
-		Preparation:       "Ulangi materi " + subject.Name + " sebelumnya sebelum kelas berikutnya",
-	}
 }
 
 func (ctrl *AIController) GetPrediction(konteks *gin.Context) {
