@@ -25,7 +25,7 @@ Sebelum melakukan perubahan atau membaca kode, baca file-file referensi berikut 
 
 ### 📖 Pengetahuan & Spesifikasi API
 - [`README.md`](../README.md) — Panduan setup lokal dan ringkasan fitur.
-- [`docs/API.md`](API.md) — Katalog 61 endpoint HTTP backend lengkap dengan contoh request dan response.
+- [`docs/API.md`](API.md) — Katalog 65 endpoint API backend lengkap dengan contoh request dan response. Endpoint utilitas di luar prefix `/api`: `GET /`, `GET /health`, `GET /docs` (Swagger UI), `GET /openapi.yaml`, dan static `GET /uploads/*`.
 - [`docs/AI_CONTRACT.md`](AI_CONTRACT.md) — Kontrak spesifikasi payload JSON antara backend Go dan AI Specialist (Scheduler & Predictor).
 - [`docs/SECURITY.md`](SECURITY.md) — Batasan keras keamanan, sanitasi database error, hashing password, dan penanganan token JWT.
 - [`docs/GLOSSARY.md`](GLOSSARY.md) — Kamus istilah domain (Priority Score, Study Session, Heuristic Fallback, Day of Week, dll).
