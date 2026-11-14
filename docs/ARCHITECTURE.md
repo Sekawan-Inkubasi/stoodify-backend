@@ -23,7 +23,8 @@ Dokumen ini menjelaskan diagram sistem, batasan domain, dan pola arsitektur utam
                                     v
                      +------------------------------+
                      |   AI Service Specialist      |
-                     | (FastAPI / Gemini Assistant) |
+                     |  (FastAPI: /schedule,        |
+                     |   /predict)                  |
                      +------------------------------+
 ```
 
@@ -46,7 +47,8 @@ Dokumen ini menjelaskan diagram sistem, batasan domain, dan pola arsitektur utam
 
 4. **AI & Study Session Domain**
    - Penjadwalan sesi belajar mandiri dan prediksi materi berikutnya.
-   - Memiliki mekanisme fallback rule-based otomatis jika service AI eksternal offline atau lambat (>5 detik).
+   - Memiliki mekanisme fallback rule-based otomatis jika service AI eksternal offline atau lambat (timeout default 15 detik, bisa diatur lewat `AI_TIMEOUT_SECONDS`).
+   - `POST /api/ai/reschedule` masih murni lokal (menata ulang jam sesi `planned` tanpa memanggil AI).
 
 ---
 

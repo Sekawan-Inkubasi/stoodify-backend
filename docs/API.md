@@ -766,6 +766,8 @@ GET /statistics/overview            → poin statistik
 POST /ai/reschedule                 → semua sesi planned disusun ulang ke slot kosong hari ini
 ```
 
+> ⚠️ Endpoint ini **lokal, bukan AI**: sesi `planned` dijejerkan ulang berurutan dari `preferences.start_time` (durasi = `session_duration`). Jadwal sekolah & aktivitas rutin belum diperhitungkan, jadi tetap tampilkan sebagai usulan yang bisa diubah siswa.
+
 ---
 
 ## 15. Lampiran: Sumber AI
@@ -776,5 +778,6 @@ POST /ai/reschedule                 → semua sesi planned disusun ulang ke slot
 | `AI_PREDICTOR_URL` | Endpoint AI Spec 2 (prediksi materi) |
 | `AI_API_KEY` | Api key bearer untuk kedua endpoint |
 | `AI_FALLBACK_ENABLED` | `false` = matikan fallback rule-based |
+| `AI_TIMEOUT_SECONDS` | batas tunggu panggilan AI dalam detik (default `15`) |
 
 AI memberi rekomendasi, **siswa tetap yang memutuskan** (bisa tolak/ubah). Setiap output AI wajib menyertakan alasan (`reason`) yang mudah dipahami siswa — tampilkan field itu apa adanya.

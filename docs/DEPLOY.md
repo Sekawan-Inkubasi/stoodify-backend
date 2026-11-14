@@ -6,26 +6,33 @@ Backend Go ini butuh satu proses (HTTP + scheduler goroutine) dan satu PostgreSQ
 
 | Env | Nilai |
 |---|---|
-| `POSTGRES_URL` | DSN Supabase. Kalau lewat pooler: `postgresql://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:6543/postgres?sslmode=require`. Direct: port `5432`. |
+| `POSTGRES_URL` | DSN Supabase. Kalau lewat pooler: `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?sslmode=require`. Direct: port `5432`. Bisa juga `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (Neon). |
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `PORT` | diisi otomatis oleh Railway/Render — jangan hardcode |
+| `TRUSTED_PROXIES` | IP/CIDR reverse proxy, mis. `10.0.0.0/8`. Kosong = percaya semua `X-Forwarded-For` (rate limiter jadi bisa dibohongi) |
 | `AI_SCHEDULER_URL`, `AI_PREDICTOR_URL`, `AI_API_KEY` | opsional; kosong = fallback rule-based |
 | `AI_FALLBACK_ENABLED` | `false` untuk mematikan fallback |
+| `AI_TIMEOUT_SECONDS` | opsional, default `15`. Turunkan (mis. `5`) kalau ingin cepat pindah ke fallback |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | opsional, untuk email reset password. Kosong = `NoopMailer` (email tidak dikirim, token tetap dibuat) |
+| `PASSWORD_RESET_URL` | base URL halaman reset di aplikasi, dipakai di body email |
 
 AutoMigrate + index dijalankan saat boot, jadi deploy pertama langsung membuat tabel.
+
+> ⚠️ **Avatar disimpan di disk lokal** (`uploads/avatars`, disajikan lewat `GET /uploads/...`). Filesystem Railway/Render bersifat *ephemeral*: avatar akan hilang setiap redeploy/restart dan tidak akan sinkron kalau instance lebih dari satu. Untuk produksi, pindahkan ke object storage dulu (helper `config.InitStorage` sudah membaca `AWS_*` tapi belum dipakai handler mana pun).
 
 ## Railway
 
 1. New Project → Deploy from GitHub repo ini, root directory `backend`/`stoodify-backend`.
 2. Railway mendeteksi `Dockerfile` otomatis.
 3. Set env di tab Variables.
-4. Deploy. Health check: `GET /api/auth/login` (POST) atau route apa pun yang ada — Railway hanya butuh port terbuka. Kalau ingin health check khusus, set path ke `/api/statistics/overview` **tanpa** auth akan 401; lebih aman pakai `GET /api/ngawur` yang membalas 404 (server hidup).
+4. Deploy. Health check: pakai path `/health` (membalas `200 {"status":"healthy","service":"stoodify-backend"}` tanpa auth).
+5. Endpoint `/api/*` butuh token; jangan pakai endpoint ber-auth sebagai health check (akan selalu 401).
 
 ## Render
 
 - Environment: **Docker**
 - Dockerfile Path: `Dockerfile`
-- Health Check Path: `/api/ngawur` (membalas 404 = server hidup; render hanya butuh respons HTTP)
+- Health Check Path: `/health`
 - Set env yang sama di tab Environment.
 
 ## Catatan Supabase
