@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -186,27 +188,37 @@ func (ctrl *AIController) panggilAIScheduler(
 ) ([]slotRekomendasi, string) {
 	url := os.Getenv("AI_SCHEDULER_URL")
 	if url != "" {
+		breakDuration := pref.BreakDuration
+		if breakDuration <= 0 {
+			breakDuration = 15
+		}
+		maxSessions := pref.MaxSessionsPerDay
+		if maxSessions <= 0 {
+			maxSessions = 3
+		}
 		payload := gin.H{
 			"user_id":  userID,
 			"date":     date.Format("2006-01-02"),
 			"now":      time.Now().Format(time.RFC3339),
 			"timezone": "Asia/Jakarta",
 			"preferences": gin.H{
-				"start_time":       pref.StartTime,
-				"end_time":         pref.EndTime,
-				"session_duration": pref.SessionDuration,
-				"active_days":      pref.ActiveDays,
+				"start_time":           pref.StartTime,
+				"end_time":             pref.EndTime,
+				"session_duration":     pref.SessionDuration,
+				"break_duration":       breakDuration,
+				"max_sessions_per_day": maxSessions,
+				"active_days":          pref.ActiveDays,
 			},
 			"tasks":             tasks,
 			"schedules":         schedules,
 			"activities":        activities,
 			"existing_sessions": existingSessions,
 		}
-		var result struct {
-			Sessions []slotRekomendasi `json:"sessions"`
-		}
-		if err := postJSON(konteks.Request.Context(), url, payload, &result); err == nil && len(result.Sessions) > 0 {
-			return result.Sessions, "ai"
+		var raw json.RawMessage
+		if err := postJSON(konteks.Request.Context(), url, payload, &raw); err == nil {
+			if slots := parseSchedulerResponse(raw); len(slots) > 0 {
+				return slots, "ai"
+			}
 		}
 	}
 
@@ -214,6 +226,72 @@ func (ctrl *AIController) panggilAIScheduler(
 		return nil, ""
 	}
 	return fallbackSlots(date, tasks, pref), "fallback rule-based"
+}
+
+// aiSlotRaw adalah bentuk mentah slot dari service AI. Service AI boleh memakai
+// nama field gaya kontrak (`session_date`) maupun gaya internal (`recommended_date`);
+// keduanya diterima agar integrasi lintas tim tidak pecah karena beda penamaan.
+type aiSlotRaw struct {
+	TaskID          uint   `json:"task_id"`
+	TaskTitle       string `json:"task_title"`
+	RecommendedDate string `json:"recommended_date"`
+	SessionDate     string `json:"session_date"`
+	StartTime       string `json:"start_time"`
+	EndTime         string `json:"end_time"`
+	Duration        int    `json:"duration"`
+	TargetProgress  int    `json:"target_progress"`
+	Priority        string `json:"priority"`
+	Reason          string `json:"reason"`
+}
+
+// parseSchedulerResponse menerima `{"sessions":[...]}`, `{"data":[...]}`, atau array polos.
+func parseSchedulerResponse(raw json.RawMessage) []slotRekomendasi {
+	var wrapper struct {
+		Sessions []aiSlotRaw `json:"sessions"`
+		Data     []aiSlotRaw `json:"data"`
+	}
+	var candidates [][]aiSlotRaw
+	if err := json.Unmarshal(raw, &wrapper); err == nil {
+		if len(wrapper.Sessions) > 0 {
+			candidates = append(candidates, wrapper.Sessions)
+		}
+		if len(wrapper.Data) > 0 {
+			candidates = append(candidates, wrapper.Data)
+		}
+	}
+	var bare []aiSlotRaw
+	if err := json.Unmarshal(raw, &bare); err == nil && len(bare) > 0 {
+		candidates = append(candidates, bare)
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	rawSlots := candidates[0]
+	slots := make([]slotRekomendasi, 0, len(rawSlots))
+	for _, r := range rawSlots {
+		date := r.RecommendedDate
+		if date == "" {
+			date = r.SessionDate
+		}
+		endTime := r.EndTime
+		if endTime == "" && r.StartTime != "" && r.Duration > 0 {
+			if start := hhmmMinutes(r.StartTime); start >= 0 {
+				endTime = minutesToHHMM(start + r.Duration)
+			}
+		}
+		slots = append(slots, slotRekomendasi{
+			TaskID:          r.TaskID,
+			RecommendedDate: date,
+			StartTime:       r.StartTime,
+			EndTime:         endTime,
+			Duration:        r.Duration,
+			TargetProgress:  r.TargetProgress,
+			Priority:        r.Priority,
+			Reason:          r.Reason,
+		})
+	}
+	return slots
 }
 
 // fallbackSlots membagi tugas terprioritas ke slot kosong antara start-end preferensi.
@@ -403,7 +481,7 @@ func (ctrl *AIController) GeneratePrediction(konteks *gin.Context) {
 		return
 	}
 
-	prediction, source := ctrl.panggilAIPredictor(konteks, subject, history)
+	prediction, source := ctrl.panggilAIPredictor(konteks, user, subject, history)
 	if source == "" {
 		response.Fail(konteks, 502, "layanan AI tidak dapat dihubungi, silakan coba lagi", nil)
 		return
@@ -434,13 +512,22 @@ type hasilPrediksi struct {
 	Preparation       string  `json:"preparation_suggestion"`
 }
 
-func (ctrl *AIController) panggilAIPredictor(konteks *gin.Context, subject migrations.Subject, history []migrations.Task) (hasilPrediksi, string) {
+func (ctrl *AIController) panggilAIPredictor(konteks *gin.Context, user migrations.User, subject migrations.Subject, history []migrations.Task) (hasilPrediksi, string) {
 	url := os.Getenv("AI_PREDICTOR_URL")
 	if url != "" {
-		payload := gin.H{"subject": subject.Name, "difficulty": subject.Difficulty, "history": history}
-		var result hasilPrediksi
-		if err := postJSON(konteks.Request.Context(), url, payload, &result); err == nil && result.PredictedMaterial != "" {
-			return result, "ai"
+		payload := gin.H{
+			"subject_id": subject.ID,
+			"subject":    subject.Name,
+			"difficulty": subject.Difficulty,
+			"grade":      user.Grade,
+			"major":      user.Major,
+			"history":    history,
+		}
+		var raw json.RawMessage
+		if err := postJSON(konteks.Request.Context(), url, payload, &raw); err == nil {
+			if hasil, ok := parsePredictorResponse(raw); ok {
+				return hasil, "ai"
+			}
 		}
 	}
 
@@ -448,6 +535,82 @@ func (ctrl *AIController) panggilAIPredictor(konteks *gin.Context, subject migra
 		return hasilPrediksi{}, ""
 	}
 	return fallbackPrediction(subject, history), "fallback rule-based"
+}
+
+// aiPrediksiRaw adalah bentuk mentah respons AI Predictor. Mendukung penamaan
+// kontrak (`confidence_score`, `summary`, `prerequisites` array) sekaligus
+// penamaan internal (`confidence`, `reason`, `prerequisites` string).
+type aiPrediksiRaw struct {
+	PredictedMaterial   string          `json:"predicted_topic"`
+	Confidence          float64         `json:"confidence"`
+	ConfidenceScore     float64         `json:"confidence_score"`
+	Reason              string          `json:"reason"`
+	Summary             string          `json:"summary"`
+	Prerequisites       json.RawMessage `json:"prerequisites"`
+	Preparation         string          `json:"preparation_suggestion"`
+	KeyConcepts         []string        `json:"key_concepts"`
+	SuggestedActivities []string        `json:"suggested_activities"`
+	Data                *aiPrediksiRaw  `json:"data"`
+}
+
+// parsePredictorResponse menerima bentuk `{...}` maupun `{"data":{...}}`.
+func parsePredictorResponse(raw json.RawMessage) (hasilPrediksi, bool) {
+	var parsed aiPrediksiRaw
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return hasilPrediksi{}, false
+	}
+	if parsed.Data != nil && parsed.PredictedMaterial == "" {
+		parsed = *parsed.Data
+	}
+	if parsed.PredictedMaterial == "" {
+		return hasilPrediksi{}, false
+	}
+
+	confidence := parsed.Confidence
+	if confidence <= 0 {
+		confidence = parsed.ConfidenceScore
+	}
+	// AI boleh mengirim 0..1 (0.88) atau 0..100 (88); kolom DB memakai 0..100.
+	if confidence > 0 && confidence <= 1 {
+		confidence *= 100
+	}
+
+	reason := parsed.Reason
+	if reason == "" {
+		reason = parsed.Summary
+	}
+	if reason == "" && len(parsed.KeyConcepts) > 0 {
+		reason = "Konsep kunci: " + strings.Join(parsed.KeyConcepts, ", ")
+	}
+
+	preparation := parsed.Preparation
+	if preparation == "" && len(parsed.SuggestedActivities) > 0 {
+		preparation = strings.Join(parsed.SuggestedActivities, "; ")
+	}
+
+	return hasilPrediksi{
+		PredictedMaterial: parsed.PredictedMaterial,
+		Confidence:        confidence,
+		Reason:            reason,
+		Prerequisites:     joinPrerequisites(parsed.Prerequisites),
+		Preparation:       preparation,
+	}, true
+}
+
+// joinPrerequisites menerima `["a","b"]` maupun `"a, b"`.
+func joinPrerequisites(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var list []string
+	if err := json.Unmarshal(raw, &list); err == nil {
+		return strings.Join(list, ", ")
+	}
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		return single
+	}
+	return ""
 }
 
 // fallbackPrediction: tanpa LLM, prediksi memakai judul tugas terakhir mapel itu.
@@ -517,14 +680,15 @@ func (ctrl *AIController) SubmitFeedback(konteks *gin.Context) {
 	response.OK(konteks, "umpan balik disimpan", prediction)
 }
 
-// postJSON mengirim request dengan timeout 15 detik sesuai PRD §Non-Fungsional.
+// postJSON mengirim request ke service AI. Timeout default 15 detik
+// (PRD §Non-Fungsional) dan bisa diubah lewat AI_TIMEOUT_SECONDS.
 func postJSON(ctx context.Context, url string, payload interface{}, out interface{}) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, aiTimeout())
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -550,4 +714,18 @@ func postJSON(ctx context.Context, url string, payload interface{}, out interfac
 
 func minutesToHHMM(minutes int) string {
 	return fmt.Sprintf("%02d:%02d", minutes/60, minutes%60)
+}
+
+// aiTimeout: batas tunggu panggilan service AI. Default 15 detik,
+// dapat diubah lewat AI_TIMEOUT_SECONDS (mis. "5" untuk PRD yang ketat).
+func aiTimeout() time.Duration {
+	raw := os.Getenv("AI_TIMEOUT_SECONDS")
+	if raw == "" {
+		return 15 * time.Second
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return 15 * time.Second
+	}
+	return time.Duration(seconds) * time.Second
 }
