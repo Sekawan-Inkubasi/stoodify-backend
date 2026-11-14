@@ -58,7 +58,7 @@ func TestCurriculumController(t *testing.T) {
 	r := gin.New()
 	// Mock auth middleware inject currentUser
 	r.Use(func(c *gin.Context) {
-			c.Set(middlewares.ContextUserKey, user)
+		c.Set(middlewares.ContextUserKey, user)
 		c.Next()
 	})
 
@@ -93,7 +93,7 @@ func TestCurriculumController(t *testing.T) {
 		assert.NotZero(t, topic.ID)
 
 		// Update progress
-		progressBody := map[string]interface{}	{
+		progressBody := map[string]interface{}{
 			"status": "mastered",
 			"notes":  "Paham rumus dasar turunan",
 		}

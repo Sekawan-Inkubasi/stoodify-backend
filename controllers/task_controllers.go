@@ -7,9 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"stoodify_backend/internal/params"
+	"stoodify_backend/internal/priority"
 	"stoodify_backend/internal/response"
 	"stoodify_backend/migrations"
-	"stoodify_backend/internal/priority"
 )
 
 type TaskController struct {
@@ -52,7 +52,6 @@ func toTaskResponse(task migrations.Task, budget int) TaskResponse {
 		PriorityBreakdown: &bd,
 	}
 }
-
 
 type TaskStatusInput struct {
 	Status string `json:"status" binding:"required,oneof=pending in_progress done late"`

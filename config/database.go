@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -31,14 +30,7 @@ func KonekKeDB() *gorm.DB {
 		dsn = NyariEnv("DATABASE_URL_UNPOOLED", "")
 	}
 	if dsn == "" {
-		log.Fatalf("POSTGRES_URL atau DATABASE_URL masih kosong")
-		username := NyariEnv("USER_DB", "")
-		password := NyariEnv("PASS_DB", "")
-		netloc := NyariEnv("NETLOCATION_DB", "")
-		port := NyariEnv("PORT_DB", "")
-		db_name := NyariEnv("DATABASE_NAME_DB", "")
-
-		dsn = fmt.Sprintf("postgresql://%s:%s@%s:%s/%s", username, password, netloc, port, db_name)
+		log.Fatalf("POSTGRES_URL / DATABASE_URL / DATABASE_URL_UNPOOLED masih kosong")
 	}
 
 	var err error
