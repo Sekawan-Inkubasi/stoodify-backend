@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -121,9 +123,9 @@ func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 		return
 	}
 
-	slots, ok := ctrl.panggilAIScheduler(konteks, user.ID, targetDate, tasks, pref, schedules, activities, existingSessions)
-	if !ok {
-		response.Fail(konteks, 502, "layanan AI tidak dapat dihubungi, silakan coba lagi", nil)
+	slots, err := ctrl.panggilAIScheduler(konteks, user.ID, targetDate, tasks, pref, schedules, activities, existingSessions)
+	if err != nil {
+		teruskanKegagalanAI(konteks, err)
 		return
 	}
 
@@ -173,9 +175,8 @@ func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 	response.Created(konteks, "rekomendasi sesi belajar dibuat", sessions)
 }
 
-// panggilAIScheduler memanggil AI Spec 1 dan mengembalikan (slots, ok).
-// ok=false berarti AI tidak bisa dipakai (URL kosong, error, timeout, atau respons kosong);
-// backend tidak punya jalur fallback lokal.
+// panggilAIScheduler memanggil AI Spec 1. Semua kegagalan dikembalikan sebagai error
+// agar controller bisa meneruskan status dari service AI; backend tidak punya fallback lokal.
 func (ctrl *AIController) panggilAIScheduler(
 	konteks *gin.Context,
 	userID uint,
@@ -185,44 +186,43 @@ func (ctrl *AIController) panggilAIScheduler(
 	schedules []migrations.Schedule,
 	activities []migrations.Activity,
 	existingSessions []migrations.StudySession,
-) ([]slotRekomendasi, bool) {
+) ([]slotRekomendasi, error) {
 	url := os.Getenv("AI_SCHEDULER_URL")
-	if url != "" {
-		breakDuration := pref.BreakDuration
-		if breakDuration <= 0 {
-			breakDuration = 15
-		}
-		maxSessions := pref.MaxSessionsPerDay
-		if maxSessions <= 0 {
-			maxSessions = 3
-		}
-		payload := gin.H{
-			"user_id":  userID,
-			"date":     date.Format("2006-01-02"),
-			"now":      time.Now().Format(time.RFC3339),
-			"timezone": "Asia/Jakarta",
-			"preferences": gin.H{
-				"start_time":           pref.StartTime,
-				"end_time":             pref.EndTime,
-				"session_duration":     pref.SessionDuration,
-				"break_duration":       breakDuration,
-				"max_sessions_per_day": maxSessions,
-				"active_days":          pref.ActiveDays,
-			},
-			"tasks":             tasks,
-			"schedules":         schedules,
-			"activities":        activities,
-			"existing_sessions": existingSessions,
-		}
-		var raw json.RawMessage
-		if err := postJSON(konteks.Request.Context(), url, payload, &raw); err == nil {
-			if slots := parseSchedulerResponse(raw); len(slots) > 0 {
-				return slots, true
-			}
-		}
+	if url == "" {
+		return nil, errors.New("AI_SCHEDULER_URL belum diset")
+	}
+	breakDuration := pref.BreakDuration
+	if breakDuration <= 0 {
+		breakDuration = 15
+	}
+	maxSessions := pref.MaxSessionsPerDay
+	if maxSessions <= 0 {
+		maxSessions = 3
+	}
+	payload := gin.H{
+		"user_id":  userID,
+		"date":     date.Format("2006-01-02"),
+		"now":      time.Now().Format(time.RFC3339),
+		"timezone": "Asia/Jakarta",
+		"preferences": gin.H{
+			"start_time":           pref.StartTime,
+			"end_time":             pref.EndTime,
+			"session_duration":     pref.SessionDuration,
+			"break_duration":       breakDuration,
+			"max_sessions_per_day": maxSessions,
+			"active_days":          pref.ActiveDays,
+		},
+		"tasks":             tasks,
+		"schedules":         schedules,
+		"activities":        activities,
+		"existing_sessions": existingSessions,
 	}
 
-	return nil, false
+	var raw json.RawMessage
+	if err := postJSON(konteks.Request.Context(), url, payload, &raw); err != nil {
+		return nil, err
+	}
+	return parseSchedulerResponse(raw), nil
 }
 
 // aiSlotRaw adalah bentuk mentah slot dari service AI. Service AI boleh memakai
@@ -425,9 +425,9 @@ func (ctrl *AIController) GeneratePrediction(konteks *gin.Context) {
 		return
 	}
 
-	prediction, ok := ctrl.panggilAIPredictor(konteks, user, subject, history)
-	if !ok {
-		response.Fail(konteks, 502, "layanan AI tidak dapat dihubungi, silakan coba lagi", nil)
+	prediction, err := ctrl.panggilAIPredictor(konteks, user, subject, history)
+	if err != nil {
+		teruskanKegagalanAI(konteks, err)
 		return
 	}
 
@@ -456,28 +456,34 @@ type hasilPrediksi struct {
 	Preparation       string  `json:"preparation_suggestion"`
 }
 
-// panggilAIPredictor memanggil AI Spec 2 dan mengembalikan (hasil, ok).
-// ok=false berarti AI tidak bisa dipakai; tidak ada prediksi rule-based lokal.
-func (ctrl *AIController) panggilAIPredictor(konteks *gin.Context, user migrations.User, subject migrations.Subject, history []migrations.Task) (hasilPrediksi, bool) {
+// panggilAIPredictor memanggil AI Spec 2. Kegagalan dikembalikan sebagai error
+// (termasuk status HTTP dari service AI); tidak ada prediksi rule-based lokal.
+func (ctrl *AIController) panggilAIPredictor(konteks *gin.Context, user migrations.User, subject migrations.Subject, history []migrations.Task) (hasilPrediksi, error) {
 	url := os.Getenv("AI_PREDICTOR_URL")
-	if url != "" {
-		payload := gin.H{
-			"subject_id": subject.ID,
-			"subject":    subject.Name,
-			"difficulty": subject.Difficulty,
-			"grade":      user.Grade,
-			"major":      user.Major,
-			"history":    history,
-		}
-		var raw json.RawMessage
-		if err := postJSON(konteks.Request.Context(), url, payload, &raw); err == nil {
-			if hasil, ok := parsePredictorResponse(raw); ok {
-				return hasil, true
-			}
-		}
+	if url == "" {
+		return hasilPrediksi{}, errors.New("AI_PREDICTOR_URL belum diset")
+	}
+	payload := gin.H{
+		"subject_id": subject.ID,
+		"subject":    subject.Name,
+		"difficulty": subject.Difficulty,
+		"grade":      user.Grade,
+		"major":      user.Major,
+		"history":    history,
 	}
 
-	return hasilPrediksi{}, false
+	var raw json.RawMessage
+	if err := postJSON(konteks.Request.Context(), url, payload, &raw); err != nil {
+		return hasilPrediksi{}, err
+	}
+	hasil, ok := parsePredictorResponse(raw)
+	if !ok {
+		return hasilPrediksi{}, &aiResponseError{
+			StatusCode: http.StatusBadGateway,
+			Message:    "AI tidak memberikan prediksi materi yang bisa dipakai",
+		}
+	}
+	return hasil, nil
 }
 
 // aiPrediksiRaw adalah bentuk mentah respons AI Predictor. Mendukung penamaan
@@ -606,8 +612,80 @@ func (ctrl *AIController) SubmitFeedback(konteks *gin.Context) {
 	response.OK(konteks, "umpan balik disimpan", prediction)
 }
 
+// aiResponseError: kegagalan yang datang dari service AI dan membawa status HTTP.
+// Dipakai agar controller bisa meneruskan status (mis. 429 saat LLM kena rate limit)
+// beserta Retry-After ke klien.
+type aiResponseError struct {
+	StatusCode int
+	Message    string
+	RetryAfter string
+}
+
+func (e *aiResponseError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return "service AI membalas status " + strconv.Itoa(e.StatusCode)
+}
+
+// teruskanKegagalanAI memetakan kegagalan panggilan AI menjadi respons klien.
+// Keputusan soal limit/degradasi ada di service Python:
+// 429 & 503 diteruskan apa adanya (termasuk Retry-After) supaya aplikasi bisa
+// menyarankan "coba lagi nanti"; kegagalan lain (koneksi, timeout, respons rusak) jadi 502.
+func teruskanKegagalanAI(konteks *gin.Context, err error) {
+	var aiErr *aiResponseError
+	if errors.As(err, &aiErr) {
+		if aiErr.StatusCode == http.StatusTooManyRequests || aiErr.StatusCode == http.StatusServiceUnavailable {
+			pesan := aiErr.Message
+			if pesan == "" {
+				pesan = "layanan AI sedang sibuk, silakan coba lagi nanti"
+			}
+			if aiErr.RetryAfter != "" {
+				konteks.Header("Retry-After", aiErr.RetryAfter)
+			}
+			response.Fail(konteks, aiErr.StatusCode, pesan, nil)
+			return
+		}
+		log.Printf("ai: service membalas status %d: %s", aiErr.StatusCode, aiErr.Error())
+		response.Fail(konteks, http.StatusBadGateway, "layanan AI tidak dapat dihubungi, silakan coba lagi", nil)
+		return
+	}
+
+	log.Printf("ai: panggilan gagal: %v", err)
+	response.Fail(konteks, http.StatusBadGateway, "layanan AI tidak dapat dihubungi, silakan coba lagi", nil)
+}
+
+// pesanDariBodyAI mengambil pesan manusiawi dari body error service AI.
+// Mendukung {"message": ...}, {"detail": ...}, {"error": "..."} atau teks polos.
+func pesanDariBodyAI(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	var payload struct {
+		Message string `json:"message"`
+		Detail  string `json:"detail"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &payload); err == nil {
+		switch {
+		case payload.Message != "":
+			return payload.Message
+		case payload.Detail != "":
+			return payload.Detail
+		case payload.Error != "":
+			return payload.Error
+		}
+	}
+	teks := strings.TrimSpace(string(body))
+	if len(teks) > 200 {
+		teks = teks[:200]
+	}
+	return teks
+}
+
 // postJSON mengirim request ke service AI. Timeout default 15 detik
 // (PRD §Non-Fungsional) dan bisa diubah lewat AI_TIMEOUT_SECONDS.
+// Status non-2xx dikembalikan sebagai *aiResponseError agar status asli tidak hilang.
 func postJSON(ctx context.Context, url string, payload interface{}, out interface{}) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -633,7 +711,12 @@ func postJSON(ctx context.Context, url string, payload interface{}, out interfac
 	defer res.Body.Close()
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return errors.New("layanan AI mengembalikan status " + res.Status)
+		isi, _ := io.ReadAll(io.LimitReader(res.Body, 8<<10))
+		return &aiResponseError{
+			StatusCode: res.StatusCode,
+			Message:    pesanDariBodyAI(isi),
+			RetryAfter: res.Header.Get("Retry-After"),
+		}
 	}
 	return json.NewDecoder(res.Body).Decode(out)
 }
