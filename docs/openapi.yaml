@@ -1234,7 +1234,7 @@ paths:
     post:
       tags:
       - AI Bridge
-      summary: Generate Rekomendasi Sesi Belajar (AI / Rule-based Fallback)
+      summary: Generate Rekomendasi Sesi Belajar (via AI Specialist)
       security:
       - bearerAuth: []
       requestBody:
@@ -1250,6 +1250,17 @@ paths:
       responses:
         '201':
           description: Rekomendasi sesi belajar dibuat dan disimpan ke study_sessions
+        '429':
+          description: Kuota AI habis / dibatasi; header Retry-After berisi detik
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              description: Detik sampai klien boleh mencoba lagi
+        '502':
+          description: Service AI tidak dapat dihubungi atau tidak memberi slot valid
+        '503':
+          description: Service AI sedang tidak siap
   /ai/schedule-recommendations:
     get:
       tags:
@@ -1306,7 +1317,7 @@ paths:
     post:
       tags:
       - AI Bridge
-      summary: Generate Prediksi Materi Berikutnya
+      summary: Generate Prediksi Materi Berikutnya (via AI Specialist)
       security:
       - bearerAuth: []
       requestBody:
@@ -1324,6 +1335,17 @@ paths:
       responses:
         '201':
           description: Prediksi materi dibuat
+        '429':
+          description: Kuota AI habis / dibatasi; header Retry-After berisi detik
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              description: Detik sampai klien boleh mencoba lagi
+        '502':
+          description: Service AI tidak dapat dihubungi atau tidak memberi prediksi valid
+        '503':
+          description: Service AI sedang tidak siap
   /ai/material-predictions/{subjectId}:
     get:
       tags:

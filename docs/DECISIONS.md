@@ -21,10 +21,22 @@ Catatan pertimbangan dan keputusan desain arsitektural teknis Stoodify Backend.
 ---
 
 ## ADR-003: Graceful Fallback untuk Rekomendasi AI
+- **Status:** **Superseded** oleh ADR-005 (13 November 2026)
+- **Konteks (historis):** Ketergantungan pada model AI eksternal rentan mengalami rate limit, timeout, atau jaringan putus saat demo pameran.
+- **Keputusan (historis):** Backend mengimplementasikan rule-based heuristic scheduler internal di controller AI yang otomatis aktif saat panggilan AI eksternal gagal atau payload kosong.
+- **Kenapa diganti:** dua sumber kebenaran (Go dan Python) membuat hasil sulit diprediksi, dan fallback hanya menjejalkan tugas ke rentang preferensi tanpa mempertimbangkan jadwal sekolah/aktivitas. Penanganan limit kini dipusatkan di service Python.
+
+---
+
+## ADR-005: Backend AI Bersifat Bridge Murni (tanpa Fallback Lokal)
 - **Status:** Diterima & Diimplementasikan
-- **Konteks:** Ketergantungan pada model AI eksternal rentan mengalami rate limit, timeout, atau jaringan putus saat demo pameran.
-- **Keputusan:** Backend mengimplementasikan rule-based heuristic scheduler internal di controller AI yang otomatis aktif saat panggilan AI eksternal gagal atau payload kosong.
-- **Konsekuensi:** Siswa tetap mendapatkan jadwal belajar terstruktur meskipun layanan AI sedang tidak dapat dijangkau.
+- **Konteks:** Integrasi dengan service AI (`stoodify-ai-1`) perlu satu sumber kebenaran. Perilaku saat LLM kena rate limit/timeout harus bisa diubah tanpa deploy ulang backend Go.
+- **Keputusan:**
+  1. Hapus total fallback rule-based (`fallbackSlots`, `fallbackPrediction`) dan env `AI_FALLBACK_ENABLED`.
+  2. Semua keputusan saat AI bermasalah ada di Python: balas `200` dengan rencana degradasi bila masih punya plan, atau `429`/`503` bila tidak.
+  3. Backend hanya meneruskan: `429`/`503` + `Retry-After` dan pesan Python dikembalikan apa adanya; status lain, timeout, atau koneksi gagal menjadi `502` generik.
+  4. `AI_SCHEDULER_URL` dan `AI_PREDICTOR_URL` wajib; `serve` gagal saat boot kalau kosong.
+- **Konsekuensi:** kalau service AI mati, fitur jadwal & prediksi mengembalikan error (tidak ada jadwal cadangan). Ini disengaja: rencana degradasi harus dibuat di Python. Sesi/prediksi parsial tidak pernah disimpan.
 
 ---
 ## ADR-004: Sanitasi Database Error di Environment Production

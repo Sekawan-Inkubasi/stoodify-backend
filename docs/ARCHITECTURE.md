@@ -46,8 +46,9 @@ Dokumen ini menjelaskan diagram sistem, batasan domain, dan pola arsitektur utam
    - Nilai `priority_breakdown` dihitung dinamis (*computed on the fly*) untuk modal detail di mobile.
 
 4. **AI & Study Session Domain**
-   - Penjadwalan sesi belajar mandiri dan prediksi materi berikutnya.
-   - Memiliki mekanisme fallback rule-based otomatis jika service AI eksternal offline atau lambat (timeout default 15 detik, bisa diatur lewat `AI_TIMEOUT_SECONDS`).
+   - Penjadwalan sesi belajar mandiri dan prediksi materi berikutnya, keduanya dari service AI eksternal.
+   - Backend bersifat **bridge murni**: tidak ada scheduler/prediktor rule-based lokal. Kegagalan AI diteruskan ke klien (429/503 apa adanya, sisanya 502) dan keputusan limit/degradasi ada di service Python.
+   - Timeout panggilan AI default 15 detik (`AI_TIMEOUT_SECONDS`); `serve` menolak start kalau `AI_SCHEDULER_URL`/`AI_PREDICTOR_URL` kosong.
    - `POST /api/ai/reschedule` masih murni lokal (menata ulang jam sesi `planned` tanpa memanggil AI).
 
 ---

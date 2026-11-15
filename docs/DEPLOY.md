@@ -10,9 +10,10 @@ Backend Go ini butuh satu proses (HTTP + scheduler goroutine) dan satu PostgreSQ
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `PORT` | diisi otomatis oleh Railway/Render — jangan hardcode |
 | `TRUSTED_PROXIES` | IP/CIDR reverse proxy, mis. `10.0.0.0/8`. Kosong = percaya semua `X-Forwarded-For` (rate limiter jadi bisa dibohongi) |
-| `AI_SCHEDULER_URL`, `AI_PREDICTOR_URL`, `AI_API_KEY` | opsional; kosong = fallback rule-based |
-| `AI_FALLBACK_ENABLED` | `false` untuk mematikan fallback |
-| `AI_TIMEOUT_SECONDS` | opsional, default `15`. Turunkan (mis. `5`) kalau ingin cepat pindah ke fallback |
+| `AI_SCHEDULER_URL` | **wajib** untuk `serve` (kosong = server menolak start) |
+| `AI_PREDICTOR_URL` | **wajib** untuk `serve` (kosong = server menolak start) |
+| `AI_API_KEY` | opsional; dikirim sebagai Bearer ke kedua endpoint |
+| `AI_TIMEOUT_SECONDS` | opsional, default `15`. Lewat batas ini klien dapat `502` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | opsional, untuk email reset password. Kosong = `NoopMailer` (email tidak dikirim, token tetap dibuat) |
 | `PASSWORD_RESET_URL` | base URL halaman reset di aplikasi, dipakai di body email |
 

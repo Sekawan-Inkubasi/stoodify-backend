@@ -15,11 +15,12 @@ Selamat datang! Dokumen ini berisi **semua yang dibutuhkan** untuk menghubungkan
 Stoodify memakai **JWT dengan 2 token**:
 
 | Token | Umur | Dipakai untuk |
-|---|---|---|
+| --- | --- | --- |
 | `access_token` | 15 menit | Semua request yang butuh login (header `Authorization`) |
 | `refresh_token` | 7 hari | Menukar dengan access token baru kalau access habis masa |
 
 **Aturan penting:**
+
 - `access_token` cepat habis (15 menit). Jangan paksa user login ulang — pakai `/auth/refresh`.
 - `refresh_token` **hanya bisa dipakai sekali**. Setiap refresh, server memberi pasangan token baru dan mencabut yang lama.
 - `refresh_token` yang sudah dipakai/dicabut → error 401. Kalau ini terjadi, minta user login ulang.
@@ -43,6 +44,7 @@ POST /auth/register
 ```
 
 Sukses → **201**:
+
 ```json
 {
   "success": true,
@@ -62,7 +64,7 @@ Sukses → **201**:
 ```
 
 | Error | Status | Kapan muncul |
-|---|---|---|
+| --- | --- | --- |
 | Email sudah dipakai | 409 | `errors.body = "email registered"` |
 | Password ≠ konfirmasi | 422 | `errors.confirm_password` |
 | Field kosong / email tidak valid | 400 | `errors.body` |
@@ -78,6 +80,7 @@ POST /auth/login
 ```
 
 Sukses → **200**:
+
 ```json
 {
   "success": true,
@@ -113,6 +116,7 @@ Authorization: Bearer <access_token>
 ```
 
 Contoh curl:
+
 ```bash
 curl -X GET http://localhost:8080/api/tasks/ \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..."
@@ -131,6 +135,7 @@ POST /auth/refresh
 ```
 
 Sukses → **200**, server memberikan pasangan **baru**:
+
 ```json
 {
   "success": true,
@@ -145,6 +150,7 @@ Sukses → **200**, server memberikan pasangan **baru**:
 ```
 
 **Pola yang disarankan di aplikasi (interceptor axios/TanStack Query):**
+
 1. Request dipanggil dengan `access_token`.
 2. Dapat 401 → panggil `/auth/refresh` dengan `refresh_token`.
 3. Sukses → simpan token baru, ulangi request yang gagal.
@@ -158,6 +164,7 @@ POST /auth/logout
 
 Tanpa body: mencabut **semua** refresh token user (aman: user keluar dari semua perangkat).
 Dengan body: mencabut satu perangkat saja.
+
 ```json
 { "refresh_token": "eyJhbGciOiJIUzI1NiIs..." }
 ```
@@ -169,6 +176,7 @@ Sukses → **200**. Setelah logout, refresh token tidak bisa dipakai lagi.
 ```
 GET /auth/me
 ```
+
 Sukses → **200** dengan data user (field `password_hash` tidak pernah dikirim).
 
 ---
@@ -176,11 +184,13 @@ Sukses → **200** dengan data user (field `password_hash` tidak pernah dikirim)
 ## 2. Format Response (semua endpoint)
 
 Sukses:
+
 ```json
 { "success": true, "message": "pesan", "data": { }, "meta": { } }
 ```
 
 Error:
+
 ```json
 { "success": false, "message": "pesan", "errors": { "field": "alasan" } }
 ```
@@ -188,7 +198,7 @@ Error:
 **Kode status yang umum:**
 
 | Kode | Arti |
-|---|---|
+| --- | --- |
 | 200 | Sukses (GET/PATCH) |
 | 201 | Berhasil dibuat (POST) |
 | 204 | Berhasil dihapus (DELETE, tanpa body) |
@@ -202,6 +212,7 @@ Error:
 > ⚠️ **PENTING untuk keamanan:** kalau user mencoba akses data orang lain (mis. task id milik user lain), server balas **404**, bukan 403 — supaya tidak bisa ditebak apakah id itu ada. Di aplikasi, perlakukan 404 sebagai "tidak ada / tidak diizinkan".
 
 **Pagination** (endpoint GET yang bisa panjang): kirim `?page=1&per_page=20`. Balasan `meta`:
+
 ```json
 "meta": { "page": 1, "perPage": 20, "total": 42, "totalPages": 3 }
 ```
@@ -213,7 +224,7 @@ Error:
 ### Ringkasan
 
 | Method | Path | Fungsi |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/users/me` | Ambil profil sendiri |
 | PATCH | `/users/me` | Ubah nama / email / sekolah / grade / major |
 | POST | `/users/avatar` | Unggah foto profil siswa (multipart/form-data, maks 2MB, JPG/PNG/WEBP) |
@@ -230,9 +241,11 @@ Content-Type: multipart/form-data
 ```
 
 Payload (Form-Data):
+
 - `avatar`: file gambar (JPG, JPEG, PNG, WEBP, maks 2MB)
 
 Response: `200 OK`
+
 ```json
 {
   "success": true,
@@ -251,6 +264,7 @@ File statis avatar dapat diakses publik melalui:
 ```
 POST /users/change-password
 ```
+
 Header:
 `Authorization: Bearer <access_token>`
 
@@ -261,9 +275,11 @@ Header:
   "confirm_password": "passwordBaru456"
 }
 ```
+
 > Catatan: Field password lama mendukung nama JSON `old_password` atau `current_password`. Minimal panjang password baru adalah 8 karakter.
 
 Response Sukses (**200 OK**):
+
 ```json
 {
   "success": true,
@@ -271,6 +287,7 @@ Response Sukses (**200 OK**):
   "data": null
 }
 ```
+
 > Seluruh sesi lama (`refresh_tokens`) akan dicabut otomatis demi keamanan akun.
 
 ### Contoh: atur preferensi waktu belajar
@@ -278,6 +295,7 @@ Response Sukses (**200 OK**):
 ```
 PATCH /users/me/preferences
 ```
+
 ```json
 {
   "start_time": "15:00",
@@ -288,7 +306,7 @@ PATCH /users/me/preferences
 ```
 
 | Field | Format | Catatan |
-|---|---|---|
+| --- | --- | --- |
 | `start_time` / `end_time` | `HH:MM` | Boleh dikirim sebagian (PATCH parsial) |
 | `session_duration` | angka menit | 15–600. Dipakai AI scheduler sebagai durasi sesi |
 | `active_days` | string | `1,2,3,4,5` = Senin–Jumat (1=Senin, 7=Minggu) |
@@ -302,7 +320,7 @@ PATCH /users/me/preferences
 ### Ringkasan
 
 | Method | Path | Fungsi |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/subjects/?search=&page=&per_page=` | Daftar mapel |
 | POST | `/subjects/` | Tambah mapel |
 | GET | `/subjects/{id}` | Detail mapel |
@@ -314,11 +332,13 @@ PATCH /users/me/preferences
 ```
 POST /subjects/
 ```
+
 ```json
 { "name": "Matematika", "color": "#FF5252", "difficulty": 4 }
 ```
 
 Sukses → **201**:
+
 ```json
 {
   "success": true,
@@ -328,7 +348,7 @@ Sukses → **201**:
 ```
 
 | Field | Wajib | Catatan |
-|---|---|---|
+| --- | --- | --- |
 | `name` | ✅ | 1–100 karakter |
 | `color` | | hex, mis. `#FF5252` |
 | `difficulty` | | 1 (mudah) – 5 (sangat sulit). Dipakai priority engine |
@@ -340,7 +360,7 @@ Sukses → **201**:
 ### Ringkasan
 
 | Method | Path | Fungsi |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/schedules/` | Semua jadwal |
 | POST | `/schedules/` | Tambah jadwal |
 | GET | `/schedules/today` | Jadwal hari ini |
@@ -353,6 +373,7 @@ Sukses → **201**:
 ```
 POST /schedules/
 ```
+
 ```json
 {
   "subject_id": 5,
@@ -371,7 +392,9 @@ Server menolak jadwal yang **tumpang-tindih** di hari yang sama:
 ```
 POST /schedules/   (08:00–09:00, padahal sudah ada 07:00–08:30)
 ```
+
 → **409**:
+
 ```json
 {
   "success": false,
@@ -383,7 +406,7 @@ POST /schedules/   (08:00–09:00, padahal sudah ada 07:00–08:30)
 💡 **Tips UI:** pakai `errors.conflict_with` untuk menampilkan "Bentrok dengan jadwal 07:00–08:30".
 
 | Validasi lain | Status |
-|---|---|
+| --- | --- |
 | `end_time <= start_time` | 422 |
 | `day_of_week` selain `Monday`–`Sunday` | 400 |
 | `subject_id` bukan milik user | 404 |
@@ -395,7 +418,7 @@ POST /schedules/   (08:00–09:00, padahal sudah ada 07:00–08:30)
 ### Ringkasan
 
 | Method | Path | Fungsi |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/tasks/?status=&subject_id=&search=&sort=priority&page=&per_page=` | Daftar + filter |
 | POST | `/tasks/` | Tambah tugas |
 | GET | `/tasks/{id}` | Detail (ikut subtasks & subject) |
@@ -411,6 +434,7 @@ POST /schedules/   (08:00–09:00, padahal sudah ada 07:00–08:30)
 ```
 POST /tasks/
 ```
+
 ```json
 {
   "subject_id": 5,
@@ -425,6 +449,7 @@ POST /tasks/
 ```
 
 Sukses → **201**. Perhatikan: response punya **`priority_score`** yang dihitung otomatis server:
+
 ```json
 {
   "success": true,
@@ -442,7 +467,7 @@ Sukses → **201**. Perhatikan: response punya **`priority_score`** yang dihitun
 ### Penjelasan field
 
 | Field | Wajib | Nilai / Format |
-|---|---|---|
+| --- | --- | --- |
 | `subject_id` | ✅ | id mapel milik user |
 | `title` | ✅ | 1–200 karakter |
 | `deadline` | ✅ | RFC3339 dengan zona waktu: `2026-10-10T23:59:00+07:00` |
@@ -471,7 +496,7 @@ Tiap menit, server mengecek: tugas `pending`/`in_progress` yang deadlinenya suda
 ### Filters di GET /tasks/
 
 | Query | Contoh | Hasil |
-|---|---|---|
+| --- | --- | --- |
 | `status` | `?status=pending` | Hanya pending |
 | `subject_id` | `?subject_id=5` | Hanya mapel 5 |
 | `search` | `?search=integral` | Cari di judul (case-insensitive) |
@@ -485,7 +510,7 @@ Tiap menit, server mengecek: tugas `pending`/`in_progress` yang deadlinenya suda
 Memecah tugas besar jadi langkah kecil.
 
 | Method | Path | Fungsi |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/tasks/{id}/subtasks/` | Daftar subtugas sebuah tugas |
 | POST | `/tasks/{id}/subtasks/` | Tambah subtugas |
 | PATCH | `/subtasks/{id}` | Ubah judul / centang selesai |
@@ -503,7 +528,7 @@ PATCH /subtasks/3           { "is_completed": true }
 Kegiatan berulang (ekskul, les, ibadah) yang **memakan waktu** — AI scheduler memperhitungkannya sebagai waktu yang tidak bisa dipakai belajar.
 
 | Method | Path | Fungsi |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/activities/` | Daftar aktivitas |
 | POST | `/activities/` | Tambah |
 | PATCH | `/activities/{id}` | Ubah |
@@ -527,15 +552,17 @@ Bagian ini menghubungkan aplikasi ke AI Stoodify. **Client tidak pernah memanggi
 ```
 POST /ai/schedule-recommendations/generate
 ```
+
 Body opsional: `{ "date": "2026-10-10" }` (default: hari ini).
 
 Server mengambil tugas aktif user, meminta AI menyusun jadwal belajar di slot kosong, lalu **langsung menyimpan hasilnya sebagai sesi belajar** (`study_sessions`).
 
 Sukses → **201**, `data` berisi array sesi:
+
 ```json
 {
   "success": true,
-  "message": "rekomendasi sesi belajar dibuat (fallback rule-based)",
+  "message": "rekomendasi sesi belajar dibuat",
   "data": [
     {
       "id": 30,
@@ -546,13 +573,11 @@ Sukses → **201**, `data` berisi array sesi:
       "target_progress": 30,
       "status": "planned",
       "ai_generated": true,
-      "reason": "Skor prioritas 87, deadline 10 Okt 2026, progres baru 0%"
+      "reason": "Deadline besok dan tingkat kesulitan tinggi (5)"
     }
   ]
 }
 ```
-
-> ℹ️ `message` menyebut sumber: `(ai)` kalau AI Specialist merespons, `(fallback rule-based)` kalau AI mati. Bisa dipakai untuk menampilkan label yang lebih ramah.
 
 ### 9.2 Accept / reject rekomendasi
 
@@ -560,6 +585,7 @@ Sukses → **201**, `data` berisi array sesi:
 POST /ai/schedule-recommendations/{id}/accept
 POST /ai/schedule-recommendations/{id}/reject
 ```
+
 - **accept** → sesi tetap di kalender (status `planned`)
 - **reject** → sesi ditandai `skipped`
 - Daftar semua rekomendasi: `GET /ai/schedule-recommendations`
@@ -569,13 +595,28 @@ POST /ai/schedule-recommendations/{id}/reject
 ```
 POST /ai/material-predictions/generate
 ```
+
 ```json
 { "subject_id": 5 }
 ```
+
 Server membaca riwayat tugas mapel itu, meminta AI memprediksi materi berikutnya, lalu menyimpan. Sukses → **201**.
 
 Ambil riwayat prediksi sebuah mapel: `GET /ai/material-predictions/{subject_id}`
 Kirim umpan balik (membantu AI makin pintar): `POST /ai/material-predictions/{id}/feedback` dengan `{ "feedback": "accurate" }` atau `"inaccurate"`.
+
+### 9.4 Kalau AI sedang bermasalah
+
+Backend **tidak punya rekomendasi cadangan lokal** — semua keputusan ada di service AI. Tangani di aplikasi seperti ini:
+
+| Respons | Arti | Yang sebaiknya ditampilkan |
+| --- | --- | --- |
+| `201` | Berhasil (bisa jadi hasil normal atau rencana degradasi dari AI) | Tampilkan sesi seperti biasa |
+| `429` + header `Retry-After` | Kuota AI habis / sedang dibatasi | "AI sedang sibuk, coba lagi dalam N detik" lalu tombol coba ulang |
+| `503` | Model AI belum siap | Sama seperti di atas, sarankan coba beberapa saat lagi |
+| `502` | AI tidak bisa dihubungi / jawabannya tidak valid | "Layanan AI tidak tersedia", sediakan tombol coba lagi dan input manual |
+
+Pada `429`/`503`, isi `message` berasal langsung dari service AI sehingga bisa ditampilkan apa adanya.
 
 ---
 
@@ -584,12 +625,13 @@ Kirim umpan balik (membantu AI makin pintar): `POST /ai/material-predictions/{id
 Dibuat otomatis oleh scheduler (H-1 & H-0 deadline). Aplikasi cukup menampilkan.
 
 | Method | Path | Fungsi |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/notifications/?unread=true&page=&per_page=` | Daftar notifikasi |
 | PATCH | `/notifications/{id}/read` | Tandai satu dibaca |
 | PATCH | `/notifications/read-all` | Tandai semua dibaca |
 
 Contoh item notifikasi:
+
 ```json
 {
   "id": 3,
@@ -612,13 +654,14 @@ Contoh item notifikasi:
 Sesi belajar yang muncul di kalender — hasil rekomendasi AI atau dibuat manual.
 
 | Method | Path | Fungsi |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/study-sessions/?status=&page=&per_page=` | Daftar sesi |
 | GET | `/study-sessions/today` | Sesi hari ini |
 | PATCH | `/study-sessions/{id}` | Reschedule manual / ubah status |
 | DELETE | `/study-sessions/{id}` | Hapus sesi |
 
 Contoh reschedule manual (user mengubah waktu sesi):
+
 ```json
 PATCH /study-sessions/30
 { "session_date": "2026-10-11", "start_time": "20:00", "duration": 45 }
@@ -633,13 +676,14 @@ Mengubah sesi buatan AI secara manual otomatis menandai `ai_generated = false` (
 Untuk dashboard siswa.
 
 | Method | Path | Isi data |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/statistics/overview` | Total tugas, selesai, terlambat, % tepat waktu, total jam belajar, jumlah mapel, streak aktif |
 | GET | `/statistics/weekly` | Sama, untuk 7 hari terakhir |
 | GET | `/statistics/monthly` | Sama, untuk 30 hari terakhir |
 | GET | `/statistics/subjects` | Rincian per mapel (total/selesai/terlambat + rata-rata skor) |
 
 `overview` contoh:
+
 ```json
 {
   "total_tasks": 12,
@@ -660,11 +704,13 @@ Untuk dashboard siswa.
 ## 13. Kurikulum & Silabus Bertingkat (RoadmapView)
 
 ### `GET /curriculum/roadmap/:subjectId`
+
 Mengambil daftar topik silabus mata pelajaran secara terurut beserta status progress belajar siswa (`not_started`, `in_progress`, `mastered`) dan kalkulasi persentase kelulusan (`completion_rate`).
 
 - **Auth**: Wajib (Bearer Token)
 - **Header**: `Authorization: Bearer <access_token>`
 - **Response**: `200 OK`
+
   ```json
   {
     "success": true,
@@ -694,11 +740,13 @@ Mengambil daftar topik silabus mata pelajaran secara terurut beserta status prog
   ```
 
 ### `POST /curriculum/topics`
+
 Menambahkan topik silabus baru ke mata pelajaran.
 
 - **Auth**: Wajib (Bearer Token)
 - **Header**: `Authorization: Bearer <access_token>`
 - **Body**:
+
   ```json
   {
     "subject_id": 1,
@@ -711,20 +759,24 @@ Menambahkan topik silabus baru ke mata pelajaran.
     "estimated_minutes": 90
   }
   ```
+
 - **Response**: `201 Created`
 
 ### `POST /curriculum/topics/:topicId/progress`
+
 Memperbarui status progress belajar siswa untuk topik silabus tertentu.
 
 - **Auth**: Wajib (Bearer Token)
 - **Header**: `Authorization: Bearer <access_token>`
 - **Body**:
+
   ```json
   {
     "status": "mastered",
     "notes": "Latihan soal telah diselesaikan"
   }
   ```
+
 - **Response**: `200 OK`
 
 ---
@@ -773,11 +825,10 @@ POST /ai/reschedule                 → semua sesi planned disusun ulang ke slot
 ## 15. Lampiran: Sumber AI
 
 | Variabel | Fungsi |
-|---|---|
+| --- | --- |
 | `AI_SCHEDULER_URL` | Endpoint AI Spec 1 (penyusun jadwal) |
 | `AI_PREDICTOR_URL` | Endpoint AI Spec 2 (prediksi materi) |
-| `AI_API_KEY` | Api key bearer untuk kedua endpoint |
-| `AI_FALLBACK_ENABLED` | `false` = matikan fallback rule-based |
+| `AI_API_KEY` | Api key bearer untuk kedua endpoint (opsional) |
 | `AI_TIMEOUT_SECONDS` | batas tunggu panggilan AI dalam detik (default `15`) |
 
 AI memberi rekomendasi, **siswa tetap yang memutuskan** (bisa tolak/ubah). Setiap output AI wajib menyertakan alasan (`reason`) yang mudah dipahami siswa — tampilkan field itu apa adanya.

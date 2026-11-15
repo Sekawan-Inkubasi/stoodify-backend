@@ -74,7 +74,7 @@ Alias field yang diterima per slot:
 Aturan penanganan:
 - Tidak ada slot valid (bukan milik user / jam rusak) → `502 "AI tidak memberikan slot yang bisa dipakai"`, tidak ada sesi dibuat.
 - Sesi yang dibuat ditandai `ai_generated = true`, status `planned`.
-- `message` respons menyebut sumbernya: `(ai)` atau `(fallback rule-based)`.
+- `message` respons tidak lagi menyebut sumber (dulu ada sufiks `(ai)` / `(fallback rule-based)`); backend tidak punya jalur rekomendasi lokal.
 
 ---
 
@@ -119,7 +119,7 @@ Alias dan normalisasi field:
 
 | Dibaca backend | Alias | Normalisasi |
 |---|---|---|
-| `predicted_topic` | — | wajib; kosong = respons dianggap gagal → fallback |
+| `predicted_topic` | — | wajib; kosong = respons dianggap gagal → `502` |
 | `confidence` | `confidence_score` | nilai 0..1 dikali 100 otomatis (kolom DB 0..100) |
 | `reason` | `summary` | kalau dua-duanya kosong, diisi `"Konsep kunci: ..."` dari `key_concepts` |
 | `prerequisites` | — | boleh array `["a","b"]` (digabung `", "`) atau string `"a, b"` |
@@ -130,13 +130,28 @@ Kolom `material_predictions` yang disimpan: `predicted_material`, `confidence`, 
 
 ---
 
-## 3. Aturan Fallback & Toleransi
+## 3. Penanganan Error, Timeout & Rate Limit
 
-1. **Timeout**: default **15 detik** (PRD §Non-Fungsional), dapat diubah lewat env `AI_TIMEOUT_SECONDS` (mis. `5`). Lewat dari batas ini, panggilan dibatalkan.
-2. Fallback rule-based aktif kalau: URL AI kosong, request gagal/timeout, status non-2xx, body tidak bisa di-parse, atau hasil kosong/tidak ada slot valid.
-3. Fallback bisa dimatikan dengan `AI_FALLBACK_ENABLED=false`; saat itu kegagalan AI menjadi `502 "layanan AI tidak dapat dihubungi, silakan coba lagi"`.
-4. Payload `{}` pada generate jadwal ditoleransi tanpa error EOF.
-5. **Batas fallback lokal**: `fallbackSlots` dan `fallbackPrediction` tidak mempertimbangkan `schedules`/`activities`/`existing_sessions` — hanya menjejalkan tugas terprioritas ke rentang preferensi. Service AI tetap sumber rekomendasi utama; fallback hanya jaring pengaman demo.
+**Pembagian tanggung jawab:** backend Go **tidak punya fallback rule-based** dan tidak membuat jadwal/prediksi sendiri. Semua keputusan saat LLM bermasalah ada di service Python. Go hanya meneruskan hasilnya ke mobile.
+
+### Yang harus dibalas service AI
+
+| Situasi | Status dari Python | Body | Efek di backend |
+|---|---|---|---|
+| Normal | `200` | `{"sessions":[...]}` / `{"data":[...]}` / `[...]` untuk scheduler; objek/`{"data":{...}}` untuk predictor | disimpan, klien dapat `201` |
+| LLM kena rate limit tapi Python punya rencana degradasi/cache | `200` | skema normal (boleh ditandai field tambahan, mis. `"degraded": true`) | disimpan apa adanya; backend tidak mengubahnya |
+| LLM limit & tidak ada rencana | `429` | `{"message":"..."}` atau `{"detail":"..."}` + header `Retry-After` (detik) | **diteruskan**: klien dapat `429`, pesan & `Retry-After` ikut |
+| Model/service sedang tidak siap | `503` | pesan + opsional `Retry-After` | **diteruskan** sebagai `503` |
+| Error lain di Python | `4xx`/`5xx` selain 429/503 | bebas | klien dapat `502` generik; detail hanya masuk log server |
+| Python tidak bisa dihubungi / timeout | — | — | klien dapat `502 "layanan AI tidak dapat dihubungi, silakan coba lagi"` |
+
+Aturan tambahan:
+- **Timeout** backend: default **15 detik**, diubah lewat env `AI_TIMEOUT_SECONDS`. Lewat dari batas ini request dibatalkan dan klien dapat `502`.
+- **Tidak ada sesi/prediksi parsial**: kalau AI gagal, tidak ada baris DB yang ditulis.
+- **Detail internal tidak dibocorkan**: untuk status selain 429/503, pesan Python tidak diteruskan ke klien (hanya ke log).
+- **Payload `{}`** pada generate jadwal tetap ditoleransi tanpa error EOF.
+- **Konfigurasi wajib**: `AI_SCHEDULER_URL` dan `AI_PREDICTOR_URL` harus terisi; kalau kosong, perintah `serve` menolak start (fail-fast saat boot, bukan 502 per request).
+- `AI_API_KEY` opsional, dikirim sebagai `Authorization: Bearer <key>` bila diisi.
 
 ---
 

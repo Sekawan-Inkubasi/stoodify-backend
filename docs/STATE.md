@@ -10,9 +10,10 @@ Catatan serah terima kondisi codebase saat ini (*current state*) untuk sesi agen
 - **Implementasi Tambahan**:
   1. Penambahan `avatar_url` pada model `User` dan endpoint `POST /api/users/avatar` dengan static file serving `/uploads`. Catatan: file disimpan di disk lokal container.
   2. Implementasi kalkulasi streak ramah edukasi (`streak_days`) pada endpoint `GET /api/statistics/overview` dengan toleransi akhir pekan.
-  3. Integrasi environment backend ke engine Python `stoodify-ai-1` (`AI_SCHEDULER_URL=http://127.0.0.1:8000/schedule`) untuk generate jadwal dan prediksi materi. `POST /api/ai/reschedule` sendiri masih murni lokal (tidak memanggil AI).
+  3. Integrasi environment backend ke engine Python `stoodify-ai-1` (`AI_SCHEDULER_URL=http://127.0.0.1:8000/schedule`) untuk generate jadwal dan prediksi materi. Backend bersifat **bridge murni**: fallback rule-based sudah dihapus seluruhnya (ADR-005), `serve` menolak start kalau URL AI kosong, dan `POST /api/ai/reschedule` masih murni lokal (tidak memanggil AI).
   4. Parse respons AI bersifat toleran: menerima gaya kontrak (`session_date`, `confidence_score`, `prerequisites` array, wrapper `data`) maupun gaya internal. Detail di `docs/AI_CONTRACT.md`.
-  5. Perubahan frontend mobile (popup/modal, ikon `lucide-react`, touch interaction) berada di repo mobile, bukan repo ini.
+  5. Status/limit AI diteruskan ke klien: `429`/`503` + `Retry-After` dari Python dikembalikan apa adanya, sisanya `502`. Keputusan degradasi ada di Python, bukan di Go.
+  6. Perubahan frontend mobile (popup/modal, ikon `lucide-react`, touch interaction) berada di repo mobile, bukan repo ini.
 - **Status Backlog**: seluruh item di `docs/to-do.md` Tahap 1–5 selesai, kecuali: reset password (kode selesai, verifikasi end-to-end belum), dataset kurikulum (endpoint siap, katalog topik sengaja kosong), dan rescheduling adaptif berbasis AI.
 
 ## Fitur yang Siap Digunakan (MVP Ready)
@@ -29,8 +30,8 @@ Catatan serah terima kondisi codebase saat ini (*current state*) untuk sesi agen
 11. Rate limiting API (60 req/menit umum, 10 req/menit untuk auth) — isi `TRUSTED_PROXIES` sebelum deploy di balik proxy.
 
 ## Sisa Roadmap
+- **Rencana degradasi di sisi Python**: backend sudah murni bridge. Kalau service AI mati atau LLM limit, fitur jadwal & prediksi mengembalikan `502`/`429` (tidak ada jadwal cadangan). Rencana degradasi/cache harus dibuat di service AI.
 - **Rescheduling adaptif berbasis AI**: `POST /api/ai/reschedule` masih menyusun ulang sesi secara lokal (berurutan dari `start_time` preferensi) dan mengabaikan jadwal sekolah/aktivitas. Perlu keputusan produk sebelum diubah.
 - **Dataset kurikulum**: endpoint siap, tetapi katalog topik sengaja belum diisi (jangan isi topik tanpa sumber).
-- **Format kode**: `gofmt -l .` masih mengembalikan beberapa file (`controllers/curriculum_controllers.go`, `controllers/curriculum_controllers_test.go`, `controllers/task_controllers.go`, `internal/token/token_test.go`, `migrations/migrations.go`). CI dev sudah memblokir ini, jadi push berikutnya wajib `gofmt -w`.
-- **Gate format di `main`**: `ci-cd.yml` memakai `gofmt -l . && go vet ./...` yang tidak pernah gagal (exit code `gofmt -l` selalu 0). Perlu diganti `test -z "$(gofmt -l .)"` seperti di `ci.yml`.
+- **Gate format di `main`**: `ci-cd.yml` memakai `gofmt -l . && go vet ./...` yang tidak pernah gagal (exit code `gofmt -l` selalu 0). Perlu diganti `test -z "$(gofmt -l .)"` seperti di `ci.yml` (dev).
 - **Penyimpanan avatar**: masih disk lokal (`uploads/avatars`), belum object storage; hilang saat redeploy di platform ephemeral.
