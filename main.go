@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"stoodify_backend/config"
@@ -55,10 +56,32 @@ func main() {
 
 // runServe: jalankan HTTP server + scheduler background.
 func runServe(args []string) {
+	// Muat .env lebih awal supaya validasi AI di bawah melihat nilai dari file .env,
+	// bukan hanya environment yang sudah diexport (perilaku sama seperti KonekKeDB).
+	config.MuatEnvFile()
+
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	port := fs.String("port", envOr("PORT", defaultPort), "port HTTP server")
 	fs.Usage = func() { printServeHelp(fs) }
 	fs.Parse(args)
+
+	// Backend ini murni bridge ke service AI (tidak ada fallback rule-based lokal),
+	// jadi konfigurasi AI divalidasi lebih dulu sebelum konek DB.
+	aiSchedulerURL := strings.TrimSpace(os.Getenv("AI_SCHEDULER_URL"))
+	aiPredictorURL := strings.TrimSpace(os.Getenv("AI_PREDICTOR_URL"))
+	if aiSchedulerURL == "" || aiPredictorURL == "" {
+		var kosong []string
+		if aiSchedulerURL == "" {
+			kosong = append(kosong, "AI_SCHEDULER_URL")
+		}
+		if aiPredictorURL == "" {
+			kosong = append(kosong, "AI_PREDICTOR_URL")
+		}
+		log.Fatalf(
+			"konfigurasi AI belum lengkap: %s kosong. Backend ini adalah bridge ke service AI dan tidak punya fallback lokal, jadi server menolak start. Contoh: AI_SCHEDULER_URL=http://127.0.0.1:8000/schedule dan AI_PREDICTOR_URL=http://127.0.0.1:8000/predict",
+			strings.Join(kosong, " dan "),
+		)
+	}
 
 	db := config.KonekKeDB()
 

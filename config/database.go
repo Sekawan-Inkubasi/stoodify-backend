@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"sync"
 
 	"stoodify_backend/migrations"
 
@@ -14,11 +15,23 @@ import (
 
 var DB *gorm.DB
 
+// muatEnvSekali memastikan file .env hanya dibaca sekali per proses.
+var muatEnvSekali sync.Once
+
+// MuatEnvFile membaca .env lalu .env.local (menimpa nilai lama). Aman dipanggil
+// berkali-kali: hanya eksekusi pertama yang benar-benar memuat file, supaya log
+// "file tidak ditemukan" tidak dobel ketika `serve` memanggilnya sebelum KonekKeDB.
+func MuatEnvFile() {
+	muatEnvSekali.Do(func() {
+		if err := godotenv.Load(".env"); err != nil {
+			log.Println("INFO: .env file tidak ditemukan, pakai environment variables")
+		}
+		_ = godotenv.Overload(".env.local")
+	})
+}
+
 func KonekKeDB() *gorm.DB {
-	if err := godotenv.Load(".env"); err != nil {
-		log.Println("INFO: .env file tidak ditemukan, pakai environment variables")
-	}
-	_ = godotenv.Overload(".env.local")
+	MuatEnvFile()
 	InitStorage()
 
 	var dsn string
