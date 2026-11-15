@@ -43,8 +43,8 @@ type RoadmapSummary struct {
 
 type CurriculumRoadmapResponse struct {
 	Subject migrations.Subject            `json:"subject"`
-	Summary RoadmapSummary                 `json:"summary"`
-	Topics  []CurriculumTopicItemResponse  `json:"topics"`
+	Summary RoadmapSummary                `json:"summary"`
+	Topics  []CurriculumTopicItemResponse `json:"topics"`
 }
 
 type TopicProgressInput struct {
@@ -120,7 +120,7 @@ func (ctrl *CurriculumController) GetRoadmapBySubject(konteks *gin.Context) {
 		if status == migrations.TopicStatusMastered {
 			masteredCount++
 		} else if status == migrations.TopicStatusInProgress {
-		inProgressCount++
+			inProgressCount++
 		}
 
 		items[i] = CurriculumTopicItemResponse{

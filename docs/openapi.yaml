@@ -1234,7 +1234,7 @@ paths:
     post:
       tags:
       - AI Bridge
-      summary: Generate Rekomendasi Sesi Belajar (AI / Rule-based Fallback)
+      summary: Generate Rekomendasi Sesi Belajar (via AI Specialist)
       security:
       - bearerAuth: []
       requestBody:
@@ -1250,6 +1250,17 @@ paths:
       responses:
         '201':
           description: Rekomendasi sesi belajar dibuat dan disimpan ke study_sessions
+        '429':
+          description: Kuota AI habis / dibatasi; header Retry-After berisi detik
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              description: Detik sampai klien boleh mencoba lagi
+        '502':
+          description: Service AI tidak dapat dihubungi atau tidak memberi slot valid
+        '503':
+          description: Service AI sedang tidak siap
   /ai/schedule-recommendations:
     get:
       tags:
@@ -1306,7 +1317,7 @@ paths:
     post:
       tags:
       - AI Bridge
-      summary: Generate Prediksi Materi Berikutnya
+      summary: Generate Prediksi Materi Berikutnya (via AI Specialist)
       security:
       - bearerAuth: []
       requestBody:
@@ -1324,6 +1335,17 @@ paths:
       responses:
         '201':
           description: Prediksi materi dibuat
+        '429':
+          description: Kuota AI habis / dibatasi; header Retry-After berisi detik
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              description: Detik sampai klien boleh mencoba lagi
+        '502':
+          description: Service AI tidak dapat dihubungi atau tidak memberi prediksi valid
+        '503':
+          description: Service AI sedang tidak siap
   /ai/material-predictions/{subjectId}:
     get:
       tags:
@@ -1400,6 +1422,49 @@ paths:
       responses:
         '200':
           description: Daftar sesi belajar
+    post:
+      tags:
+      - Study Sessions
+      summary: Buat Sesi Belajar Manual
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - task_id
+              - session_date
+              - start_time
+              - duration
+              properties:
+                task_id:
+                  type: integer
+                  example: 12
+                session_date:
+                  type: string
+                  format: date-time
+                  example: '2026-11-13T00:00:00Z'
+                start_time:
+                  type: string
+                  description: Format HH:MM
+                  example: '16:00'
+                duration:
+                  type: integer
+                  minimum: 5
+                  maximum: 600
+                  example: 60
+                target_progress:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+      responses:
+        '201':
+          description: Sesi belajar dibuat (status planned)
+        '400':
+          description: Validasi gagal / task bukan milik user
   /study-sessions/today:
     get:
       tags:
@@ -1554,3 +1619,269 @@ paths:
       responses:
         '200':
           description: Rincian tugas & rata-rata skor per mapel
+
+  /auth/password-reset/request:
+    post:
+      tags:
+      - Auth
+      summary: Minta Link/Token Reset Password
+      description: Selalu membalas 200 dengan body yang sama, baik email terdaftar
+        maupun tidak (tidak membocorkan keberadaan akun). Pengiriman email bergantung
+        pada konfigurasi SMTP; tanpa SMTP_HOST dipakai NoopMailer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: naufal@student.id
+      responses:
+        '200':
+          description: Permintaan reset diterima (respons seragam)
+        '400':
+          description: Body tidak valid
+        '429':
+          description: Terlalu banyak permintaan (rate limit auth 10/menit)
+  /auth/password-reset/confirm:
+    post:
+      tags:
+      - Auth
+      summary: Konfirmasi Reset Password dengan Token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              - password
+              - confirm_password
+              properties:
+                token:
+                  type: string
+                  example: 9f2c1d7e4a3b4c5d6e7f8091a2b3c4d5
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                confirm_password:
+                  type: string
+                  format: password
+                  minLength: 8
+      responses:
+        '200':
+          description: Password berhasil diubah, seluruh sesi lama dicabut
+        '400':
+          description: Token tidak valid / sudah dipakai / kedaluwarsa
+        '422':
+          description: Password dan konfirmasi tidak sama
+  /auth/password/change:
+    post:
+      tags:
+      - Auth
+      summary: Ganti Password (auth group; alias dari /users/change-password)
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - new_password
+              properties:
+                current_password:
+                  type: string
+                  format: password
+                  description: Dipakai bila tidak mengirim old_password
+                old_password:
+                  type: string
+                  format: password
+                  description: Alias untuk current_password
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 8
+                confirm_password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Password diganti, token_version dinaikkan & refresh token dicabut
+        '400':
+          description: Password lama salah
+        '422':
+          description: Password baru tidak memenuhi aturan
+  /users/change-password:
+    post:
+      tags:
+      - Users
+      summary: Ganti Password Akun
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - new_password
+              properties:
+                current_password:
+                  type: string
+                  format: password
+                old_password:
+                  type: string
+                  format: password
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 8
+                confirm_password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Password diganti dan sesi lama dicabut
+        '400':
+          description: Password lama salah
+  /users/avatar:
+    post:
+      tags:
+      - Users
+      summary: Unggah Foto Profil (multipart/form-data)
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - avatar
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Maksimal 2MB, format JPG/JPEG/PNG/WEBP
+      responses:
+        '200':
+          description: Avatar tersimpan, field avatar_url berisi path /uploads/avatars/...
+        '400':
+          description: File tidak ada, terlalu besar, atau format tidak didukung
+  /curriculum/roadmap/{subjectId}:
+    get:
+      tags:
+      - Curriculum
+      summary: Roadmap Silabus per Mata Pelajaran
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subjectId
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Daftar topik terurut beserta status progres user
+        '404':
+          description: Mata pelajaran tidak ditemukan / bukan milik user
+  /curriculum/topics:
+    post:
+      tags:
+      - Curriculum
+      summary: Tambah Topik Silabus
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - subject_id
+              - title
+              properties:
+                subject_id:
+                  type: integer
+                  example: 5
+                title:
+                  type: string
+                  maxLength: 200
+                  example: Integral Tentu
+                description:
+                  type: string
+                  maxLength: 2000
+                order:
+                  type: integer
+                  example: 1
+                grade:
+                  type: integer
+                  minimum: 7
+                  maximum: 13
+                major:
+                  type: string
+                  maxLength: 100
+                term:
+                  type: integer
+                  minimum: 1
+                  maximum: 4
+                estimated_minutes:
+                  type: integer
+                  minimum: 5
+                  maximum: 1440
+      responses:
+        '201':
+          description: Topik dibuat
+        '400':
+          description: Validasi gagal
+        '404':
+          description: Mata pelajaran tidak ditemukan / bukan milik user
+  /curriculum/topics/{topicId}/progress:
+    post:
+      tags:
+      - Curriculum
+      summary: Update Progres Belajar Topik
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: topicId
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                  - not_started
+                  - in_progress
+                  - mastered
+                notes:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '200':
+          description: Progres topik diperbarui
+        '404':
+          description: Topik tidak ditemukan / bukan milik user

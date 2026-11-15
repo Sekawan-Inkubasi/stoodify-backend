@@ -7,7 +7,7 @@ REST API Stoodify — asisten belajar harian berbasis kecerdasan buatan (AI) unt
 ## 🚀 Panduan Menjalankan
 
 ### 1. Prasyarat & Setup Lingkungan
-Pastikan Anda telah menginstal Go versi 1.22+ dan PostgreSQL.
+Pastikan Anda telah menginstal Go versi 1.27 (sesuai `go.mod`; Dockerfile & CI memakai `golang:1.27-alpine`) dan PostgreSQL.
 ```bash
 # Salin file konfigurasi environment
 cp .env.example .env
@@ -32,17 +32,17 @@ go run . migrate:fresh --demo # Hapus semua tabel, migrasi ulang, langsung isi a
 ```
 
 #### Cara B: Menggunakan Binary File Hasil Kompilasi
-Di root folder backend terdapat binary executable:
-- **`./stoodify`**: Binary CLI resmi hasil kompilasi terbaru (`go build -o stoodify .`).
-- **`./stoodify_backend`**: Binary build legacy yang sebelumnya dihasilkan otomatis mengikuti nama module `module stoodify_backend` di `go.mod`.
+Di root folder backend terdapat binary executable hasil build terakhir:
+- **`./stoodify`**: binary CLI (`go build -o stoodify .`), di-commit ke repo (41 MB). Untuk dipakai lokal/demo:
 
-Keduanya adalah executable binary Linux (ELF 64-bit). Untuk pemakaian harian dan demo, disarankan menggunakan `./stoodify`:
 ```bash
 ./stoodify serve                # Start server
 ./stoodify migrate:fresh --demo # Reset total database & pasang akun demo
 ./stoodify seed --demo          # Pasang/refresh akun demo saja
 ./stoodify help                 # Bantuan CLI
 ```
+
+> Catatan: binary di-commit hanya untuk kemudahan demo. Setelah mengubah kode Go, build ulang (`go build -o stoodify .`) — binary lama tidak ikut ter-update. Binary `stoodify_backend` (nama modul) sudah tidak ada di repo.
 
 ---
 
@@ -82,18 +82,19 @@ go run . seed --users=50 --tasks=40 --reset
 ```
 stoodify-backend/
 ├── main.go            # Bootstrapping server, router, CLI commands (serve, migrate, seed)
-├── stoodify           # Binary executable utama hasil compile
-├── stoodify_backend   # Binary executable legacy (mengikuti nama go module)
+├── stoodify           # Binary executable utama hasil compile (di-commit)
 ├── config/            # Inisialisasi koneksi GORM ke PostgreSQL
 ├── controllers/       # HTTP Request Handlers (Bind, Validate, Controller logic)
 ├── routes/            # Pendaftaran route API & middleware groups
-├── middlewares/       # RequireAuth (JWT Bearer), RequireRole (RBAC), CORS, Rate Limiter
+├── middlewares/       # RequireAuth (JWT Bearer), RequireRole (belum dipakai), CORS, Rate Limiter
 ├── migrations/        # Model database GORM, tipe data, skema migrasi otomatis
 ├── workers/           # Scheduler background: auto-late task updater & reminder
 ├── internal/
 │   ├── hashing_password/ # Hashing password menggunakan bcrypt (cost 14)
+│   ├── mailer/           # Email reset password via SMTP (Noop bila SMTP_HOST kosong)
 │   ├── params/           # Parser parameter URL dan pagination helper
 │   ├── priority/         # Priority Scoring Engine & Unit Tests formula PRD
+│   ├── ratelimit/        # Store limiter in-memory untuk rate limiting middleware
 │   ├── response/         # Response envelope standar (OK, Created, Fail, Error)
 │   ├── seeder/           # Seeder massal sintetis dan seeder khusus akun demo (demo.go)
 │   └── token/            # Generator & validator JWT Access Token dan Refresh Token
@@ -110,7 +111,7 @@ Semua developer dan AI Agent yang berkontribusi pada repository ini **sangat dis
 1. **[`docs/CONTEXT.md`](docs/CONTEXT.md)**: **Konteks Bisnis & Target Pengguna.** Memahami visi Stoodify untuk siswa SMP/SMA/SMK Indonesia, alur demonstrasi, dan timeline inkubasi.
 2. **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**: **Arsitektur Sistem & Domain Boundaries.** Memahami pemisahan layer, multi-tenant isolation berbasis `user_id`, serta siklus hidup request.
 3. **[`docs/API.md`](docs/API.md)**: **Katalog Lengkap REST API.** Kontrak endpoint publik, header Authorization Bearer, format payload, upload avatar, dan respons JSON.
-4. **[`docs/AI_CONTRACT.md`](docs/AI_CONTRACT.md)**: **Kontrak Integrasi AI Engine.** Spesifikasi payload bridge antara backend Go dan microservice Python FastAPI (`stoodify-ai-1`) untuk Adaptive Rescheduling (`/schedule`) dan Material Prediction (`/predict`).
+4. **[`docs/AI_CONTRACT.md`](docs/AI_CONTRACT.md)**: **Kontrak Integrasi AI Engine.** Spesifikasi payload bridge antara backend Go dan microservice Python FastAPI (`stoodify-ai-1`) untuk generate jadwal belajar (`/schedule`) dan prediksi materi (`/predict`), termasuk aturan error/timeout/rate limit. Backend tidak punya fallback lokal.
 
 ### 📐 Standar Koding & Database
 5. **[`docs/CONVENTIONS.md`](docs/CONVENTIONS.md)**: **Konvensi Kode & Response Format.** Aturan standard error response, Gin binding tag, validasi input, dan struktur controller.

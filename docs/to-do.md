@@ -68,11 +68,11 @@ Dokumen ini merupakan daftar kerja terpadu (*single source of truth*) yang mengo
 *Fitur jangka panjang untuk fase sekolah/produksi.*
 
 - [x] **13. [GAP-08] Silabus & Kurikulum Bertingkat (`RoadmapView`)**
-  - Tabel `curriculum_topics` dan `user_topic_progress`.
-  - **Menunggu keputusan sumber data kurikulum dan dataset terkurasi; jangan mengisi katalog dengan topik tanpa sumber.**
+  - *Status:* **Endpoint selesai, katalog topik belum diisi.** Tabel `curriculum_topics` dan `user_topic_progress` aktif; `GET /api/curriculum/roadmap/:subjectId`, `POST /api/curriculum/topics`, `POST /api/curriculum/topics/:topicId/progress` terdaftar di routing dan sudah ada unit test (sqlite in-memory).
+  - *Sisa:* keputusan sumber data kurikulum dan dataset terkurasi; jangan mengisi katalog dengan topik tanpa sumber.
 - [ ] **14. Fitur Autentikasi Lanjutan**
-  - [ ] Lupa password & reset password via email — implementasi menunggu verifikasi integrasi PostgreSQL terisolasi dan review keamanan.
-  - [x] Fitur ganti password akun — implementasi selesai (`POST /api/users/change-password`), bcrypt hashing & revokasi seluruh active session (`token_version++` dan pembatalan refresh token).
+  - [x] Lupa password & reset password via email — `POST /api/auth/password-reset/request` dan `POST /api/auth/password-reset/confirm` aktif (token sekali pakai, response seragam untuk email terdaftar/tidak). *Sisa:* verifikasi end-to-end pengiriman email di environment nyata (SMTP belum diuji; tanpa `SMTP_HOST` dipakai `NoopMailer`).
+  - [x] Fitur ganti password akun — implementasi selesai (`POST /api/users/change-password` dan `POST /api/auth/password/change`), bcrypt hashing & revokasi seluruh active session (`token_version++` dan pembatalan refresh token).
   - [x] Rate limiting API — implementasi mendapat PASS review Sentinel; konfigurasi `TRUSTED_PROXIES` perlu disiapkan sesuai lingkungan deployment.
 
 ---
@@ -95,4 +95,5 @@ Dokumen ini merupakan daftar kerja terpadu (*single source of truth*) yang mengo
 - [x] **20. Konsistensi Ikon (Pembersihan Emoji)**
   - *Mobile:* Penggantian 100% 29 emoji unicode mentah di 9 file UI dengan icon semantik SVG dari `lucide-react` (`Zap`, `Flame`, `CheckCircle2`, `Clock`, `Sparkles`, `PartyPopper`, dll).
 - [x] **21. Wiring Microservice AI-1**
-  - *Backend & AI-1:* Sinkronisasi API Key dan endpoint `AI_SCHEDULER_URL=http://127.0.0.1:8000/schedule` pada `.env` serta verifikasi flow rescheduling adaptif.
+  - *Backend & AI-1:* Sinkronisasi API Key dan endpoint `AI_SCHEDULER_URL=http://127.0.0.1:8000/schedule` pada `.env`, plus verifikasi flow generate rekomendasi jadwal & prediksi materi (`docs/AI_CONTRACT.md`).
+  - *Catatan:* `POST /api/ai/reschedule` masih lokal dan belum memanggil AI.

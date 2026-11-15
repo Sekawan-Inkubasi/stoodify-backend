@@ -19,13 +19,38 @@ jobs:
   test:
     name: Test & Lint
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: stoodify_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d stoodify_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgres://postgres:testpass@localhost:5432/stoodify_test?sslmode=disable
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Lint and Vet (Go 1.27)
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # gate format harus `test -z`: `gofmt -l .` selalu exit 0 walau ada file
+      # yang belum terformat, sehingga tidak pernah menggagalkan pipeline.
+      - name: Test, Vet, and Check Formatting
         run: |
-          docker run --rm -v ${{ github.workspace }}:/src -w /src golang:1.27-alpine sh -c "gofmt -l . && go vet ./..."
+          test -z "$(gofmt -l .)"
+          go test -race ./...
+          go vet ./...
 
       - name: Test Docker Production Build
         run: |
@@ -57,9 +82,11 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME || 'root' }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_SSH_PORT || 20220 }}
+          port: ${{ secrets.VPS_SSH_PORT || '20220' }}
           script_stop: true
           script: |
+            set -euo pipefail
+
             TARGET_DIR="${{ secrets.VPS_TARGET_DIR || '/root/stoodify-backend' }}"
             echo "Deploying to: $TARGET_DIR"
 
@@ -70,10 +97,56 @@ jobs:
 
             cd "$TARGET_DIR"
 
+            # --- Preflight 1: .env wajib ada di server (tidak di-commit) ---
+            if [ ! -f .env ]; then
+              echo "ABORT: .env tidak ditemukan di $TARGET_DIR. Deploy dibatalkan, container lama tetap jalan."
+              exit 1
+            fi
+
+            # --- Preflight 2: variabel wajib harus terisi ---
+            # Backend menolak start kalau AI_SCHEDULER_URL / AI_PREDICTOR_URL kosong
+            # (bridge-only), jadi deploy dicek dulu supaya produksi tidak ikut mati.
+            MISSING=""
+            for key in POSTGRES_URL JWT_SECRET AI_SCHEDULER_URL AI_PREDICTOR_URL; do
+              if ! grep -qE "^[[:space:]]*${key}=[^[:space:]]" .env; then
+                MISSING="${MISSING} ${key}"
+              fi
+            done
+            if [ -n "$MISSING" ]; then
+              echo "ABORT: variabel wajib belum diisi di .env:${MISSING}"
+              echo "Deploy dibatalkan sebelum menyentuh container yang sedang jalan."
+              exit 1
+            fi
+
+            # --- Simpan commit aktif untuk rollback ---
+            PREV_SHA="$(git rev-parse HEAD)"
+            echo "Commit aktif sebelum deploy: $PREV_SHA"
+
             git fetch origin main
             git reset --hard origin/main
+            echo "Commit setelah update: $(git rev-parse HEAD)"
 
             docker compose up -d --build app
-            docker image prune -f
 
-            echo "Deployment completed successfully!"
+            # --- Health check: container crash-loop (mis. config salah) tidak lolos ---
+            HEALTHY=0
+            for _ in $(seq 1 20); do
+              if docker compose exec -T app wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1; then
+                HEALTHY=1
+                break
+              fi
+              sleep 3
+            done
+
+            if [ "$HEALTHY" != "1" ]; then
+              echo "Health check GAGAL setelah deploy. Menampilkan log terakhir:"
+              docker compose logs --tail 60 app || true
+              echo "Rollback ke commit $PREV_SHA"
+              git reset --hard "$PREV_SHA"
+              docker compose up -d --build app
+              echo "Rollback selesai. Deploy ditandai gagal."
+              exit 1
+            fi
+
+            docker image prune -f
+            echo "Health check OK. Deployment completed successfully!"

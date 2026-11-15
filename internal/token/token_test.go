@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestToken_AccessWithVersion(t *testing.T)	{
+func TestToken_AccessWithVersion(t *testing.T) {
 	t.Setenv("JWT_SECRET", "super-secret-test-key-minimum-32-chars-long")
 
 	userID := uint(42)

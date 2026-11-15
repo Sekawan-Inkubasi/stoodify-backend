@@ -65,13 +65,13 @@ type User struct {
 
 type UserPreference struct {
 	Base
-	UserID             uint   `gorm:"uniqueIndex;not null" json:"user_id"`
-	StartTime          string `json:"start_time"`
-	EndTime            string `json:"end_time"`
-	SessionDuration    int    `json:"session_duration"`
-	ActiveDays         string `json:"active_days"`
-	BreakDuration      int    `gorm:"default:15" json:"break_duration"`
-	MaxSessionsPerDay  int    `gorm:"default:3" json:"max_sessions_per_day"`
+	UserID            uint   `gorm:"uniqueIndex;not null" json:"user_id"`
+	StartTime         string `json:"start_time"`
+	EndTime           string `json:"end_time"`
+	SessionDuration   int    `json:"session_duration"`
+	ActiveDays        string `json:"active_days"`
+	BreakDuration     int    `gorm:"default:15" json:"break_duration"`
+	MaxSessionsPerDay int    `gorm:"default:3" json:"max_sessions_per_day"`
 }
 
 // ==================== SUBJECT & SCHEDULE ====================

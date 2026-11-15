@@ -1,9 +1,9 @@
 package config
 
 import (
-	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"stoodify_backend/migrations"
 
@@ -15,11 +15,23 @@ import (
 
 var DB *gorm.DB
 
+// muatEnvSekali memastikan file .env hanya dibaca sekali per proses.
+var muatEnvSekali sync.Once
+
+// MuatEnvFile membaca .env lalu .env.local (menimpa nilai lama). Aman dipanggil
+// berkali-kali: hanya eksekusi pertama yang benar-benar memuat file, supaya log
+// "file tidak ditemukan" tidak dobel ketika `serve` memanggilnya sebelum KonekKeDB.
+func MuatEnvFile() {
+	muatEnvSekali.Do(func() {
+		if err := godotenv.Load(".env"); err != nil {
+			log.Println("INFO: .env file tidak ditemukan, pakai environment variables")
+		}
+		_ = godotenv.Overload(".env.local")
+	})
+}
+
 func KonekKeDB() *gorm.DB {
-	if err := godotenv.Load(".env"); err != nil {
-		log.Println("INFO: .env file tidak ditemukan, pakai environment variables")
-	}
-	_ = godotenv.Overload(".env.local")
+	MuatEnvFile()
 	InitStorage()
 
 	var dsn string
@@ -31,14 +43,7 @@ func KonekKeDB() *gorm.DB {
 		dsn = NyariEnv("DATABASE_URL_UNPOOLED", "")
 	}
 	if dsn == "" {
-		log.Fatalf("POSTGRES_URL atau DATABASE_URL masih kosong")
-		username := NyariEnv("USER_DB", "")
-		password := NyariEnv("PASS_DB", "")
-		netloc := NyariEnv("NETLOCATION_DB", "")
-		port := NyariEnv("PORT_DB", "")
-		db_name := NyariEnv("DATABASE_NAME_DB", "")
-
-		dsn = fmt.Sprintf("postgresql://%s:%s@%s:%s/%s", username, password, netloc, port, db_name)
+		log.Fatalf("POSTGRES_URL / DATABASE_URL / DATABASE_URL_UNPOOLED masih kosong")
 	}
 
 	var err error

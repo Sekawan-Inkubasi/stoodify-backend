@@ -13,6 +13,6 @@ Stoodify adalah aplikasi asisten belajar harian berbasis kecerdasan buatan (AI) 
 3. **Material Predictor**: Membantu siswa mempersiapkan materi berikutnya sebelum diajarkan di kelas berdasarkan riwayat tugas dan kurikulum.
 
 ## 3. Konteks Pameran & Demo
-Backend disiapkan untuk mendukung demo interaktif aplikasi mobile (APK) dan Bruno API Client pada pameran inkubasi. Akun demo standar disediakan melalui database seeder (`main.go seed`):
-- Siswa Demo: `siswa.uji@stoodify.seed` / `rahasia123`
-- Admin Demo: `admin@stoodify.seed` / `rahasia123`
+Backend disiapkan untuk mendukung demo interaktif aplikasi mobile (APK) dan Bruno API Client pada pameran inkubasi. Akun demo standar disediakan melalui database seeder (`go run . seed --demo`):
+- Siswa Demo (profil lengkap untuk pameran): `naufal@student.id` / `password123`
+- Admin & data sintetis (`go run . seed`): `admin@stoodify.seed`, `guru001`–`guru003@stoodify.seed`, `user001...@stoodify.seed` — semua `rahasia123`
