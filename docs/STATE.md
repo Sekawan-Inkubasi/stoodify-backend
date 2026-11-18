@@ -6,7 +6,7 @@ Catatan serah terima kondisi codebase saat ini (*current state*) untuk sesi agen
 
 ## Status Terkini (Per 13 November 2026)
 - **Branch Aktif**: `dev` (identik dengan `main` kecuali workflow CI: dev pakai `ci.yml` tanpa job deploy, main pakai `ci-cd.yml` dengan deploy VPS).
-- **Verifikasi lokal terbaru**: `go build ./...`, `go vet ./...`, `go test ./...` hijau. `gofmt -l .` belum bersih — lihat poin 3 di Sisa Roadmap.
+- **Verifikasi lokal terbaru**: `go build ./...`, `go vet ./...`, `go test ./...` hijau, dan `gofmt -l .` kosong (gate CI memakai `test -z "$(gofmt -l .)"`).
 - **Implementasi Tambahan**:
   1. Penambahan `avatar_url` pada model `User` dan endpoint `POST /api/users/avatar` dengan static file serving `/uploads`. Catatan: file disimpan di disk lokal container.
   2. Implementasi kalkulasi streak ramah edukasi (`streak_days`) pada endpoint `GET /api/statistics/overview` dengan toleransi akhir pekan.
@@ -33,5 +33,5 @@ Catatan serah terima kondisi codebase saat ini (*current state*) untuk sesi agen
 - **Rencana degradasi di sisi Python**: backend sudah murni bridge. Kalau service AI mati atau LLM limit, fitur jadwal & prediksi mengembalikan `502`/`429` (tidak ada jadwal cadangan). Rencana degradasi/cache harus dibuat di service AI.
 - **Rescheduling adaptif berbasis AI**: `POST /api/ai/reschedule` masih menyusun ulang sesi secara lokal (berurutan dari `start_time` preferensi) dan mengabaikan jadwal sekolah/aktivitas. Perlu keputusan produk sebelum diubah.
 - **Dataset kurikulum**: endpoint siap, tetapi katalog topik sengaja belum diisi (jangan isi topik tanpa sumber).
-- **Gate format di `main`**: `ci-cd.yml` memakai `gofmt -l . && go vet ./...` yang tidak pernah gagal (exit code `gofmt -l` selalu 0). Perlu diganti `test -z "$(gofmt -l .)"` seperti di `ci.yml` (dev).
+- **Gate format**: sudah setara di dua branch — `dev` (`ci.yml`) dan `main` (`ci-cd.yml`, diperbaiki pada merge `0a6839d`) sama-sama memakai `test -z "$(gofmt -l .)"` + `go test -race ./...` + `go vet ./...` sebelum docker build.
 - **Penyimpanan avatar**: masih disk lokal (`uploads/avatars`), belum object storage; hilang saat redeploy di platform ephemeral.
