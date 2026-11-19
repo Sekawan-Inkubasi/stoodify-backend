@@ -11,14 +11,31 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// PRD Stoodify: Access Token 15 menit, Refresh Token 7 hari.
-const (
+// PRD Stoodify: Access Token 15 menit, Refresh Token 7 hari (dapat dikustomisasi via ENV).
+var (
 	AccessTTL  = 15 * time.Minute
 	RefreshTTL = 7 * 24 * time.Hour
+)
+
+const (
+	RotationGracePeriod = 30 * time.Second
 
 	TypeAccess  = "access"
 	TypeRefresh = "refresh"
 )
+
+func init() {
+	if customAccess := os.Getenv("JWT_ACCESS_TTL"); customAccess != "" {
+		if d, err := time.ParseDuration(customAccess); err == nil && d > 0 {
+			AccessTTL = d
+		}
+	}
+	if customRefresh := os.Getenv("JWT_REFRESH_TTL"); customRefresh != "" {
+		if d, err := time.ParseDuration(customRefresh); err == nil && d > 0 {
+			RefreshTTL = d
+		}
+	}
+}
 
 var ErrInvalid = errors.New("token tidak valid")
 

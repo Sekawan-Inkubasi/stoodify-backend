@@ -167,6 +167,12 @@ func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 		return
 	}
 
+	// Bersihkan sesi AI planned lama pada user dan tanggal target agar tidak menumpuk duplikasi
+	_ = ctrl.DB.WithContext(konteks.Request.Context()).
+		Where("user_id = ? AND session_date = ? AND status = ? AND ai_generated = ?",
+			user.ID, targetDate.Format("2006-01-02"), migrations.SessionPlanned, true).
+		Delete(&migrations.StudySession{}).Error
+
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&sessions).Error; err != nil {
 		response.ServerError(konteks, err)
 		return
@@ -332,7 +338,7 @@ func (ctrl *AIController) GetScheduleRecommendations(konteks *gin.Context) {
 	var sessions []migrations.StudySession
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).
 		Preload("Task").
-		Where("user_id = ? AND ai_generated = ?", user.ID, true).
+		Where("user_id = ? AND ai_generated = ? AND status <> ?", user.ID, true, migrations.SessionSkipped).
 		Order("session_date ASC, start_time ASC").
 		Find(&sessions).Error; err != nil {
 		response.ServerError(konteks, err)
