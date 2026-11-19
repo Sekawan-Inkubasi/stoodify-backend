@@ -29,6 +29,16 @@ type ScheduleInput struct {
 	Teacher   string `json:"teacher" binding:"omitempty,max=100"`
 }
 
+// ScheduleUpdateInput: semua field opsional — hanya field yang dikirim yang diubah (PATCH).
+type ScheduleUpdateInput struct {
+	SubjectID *uint   `json:"subject_id" binding:"omitempty"`
+	DayOfWeek *string `json:"day_of_week" binding:"omitempty"`
+	StartTime *string `json:"start_time" binding:"omitempty,len=5"`
+	EndTime   *string `json:"end_time" binding:"omitempty,len=5"`
+	Room      *string `json:"room" binding:"omitempty,max=50"`
+	Teacher   *string `json:"teacher" binding:"omitempty,max=100"`
+}
+
 func normalizeDayOfWeek(day string) string {
 	switch strings.ToLower(strings.TrimSpace(day)) {
 	case "senin", "monday", "1":
@@ -121,6 +131,7 @@ func (ctrl *ScheduleController) Create(konteks *gin.Context) {
 		return
 	}
 	ctrl.DB.Preload("Subject").First(&schedule, schedule.ID)
+	picuRegenerasi(user.ID)
 	response.Created(konteks, "jadwal dibuat", schedule)
 }
 
@@ -152,7 +163,7 @@ func (ctrl *ScheduleController) Update(konteks *gin.Context) {
 		return
 	}
 
-	var input ScheduleInput
+	var input ScheduleUpdateInput
 	if err := konteks.ShouldBindJSON(&input); err != nil {
 		response.ValidationError(konteks, err)
 		return
@@ -165,27 +176,46 @@ func (ctrl *ScheduleController) Update(konteks *gin.Context) {
 		return
 	}
 
-	day := normalizeDayOfWeek(input.DayOfWeek)
-	if day == "" {
-		response.UnprocessableEntity(konteks, "nama hari tidak valid", map[string]string{
-			"day_of_week": "harus nama hari (Senin-Minggu / Monday-Sunday / 1-7)",
-		})
-		return
+	// Terapkan hanya field yang dikirim (PATCH parsial).
+	if input.SubjectID != nil {
+		if _, found := findOwnedSubject(user.ID, *input.SubjectID); !found {
+			response.NotFound(konteks, "mata pelajaran tidak ditemukan")
+			return
+		}
+		schedule.SubjectID = *input.SubjectID
+	}
+	if input.DayOfWeek != nil {
+		day := normalizeDayOfWeek(*input.DayOfWeek)
+		if day == "" {
+			response.UnprocessableEntity(konteks, "nama hari tidak valid", map[string]string{
+				"day_of_week": "harus nama hari (Senin-Minggu / Monday-Sunday / 1-7)",
+			})
+			return
+		}
+		schedule.DayOfWeek = day
+	}
+	if input.StartTime != nil {
+		schedule.StartTime = *input.StartTime
+	}
+	if input.EndTime != nil {
+		schedule.EndTime = *input.EndTime
+	}
+	if input.Room != nil {
+		schedule.Room = *input.Room
+	}
+	if input.Teacher != nil {
+		schedule.Teacher = *input.Teacher
 	}
 
-	start, end := hhmmMinutes(input.StartTime), hhmmMinutes(input.EndTime)
+	start, end := hhmmMinutes(schedule.StartTime), hhmmMinutes(schedule.EndTime)
 	if start < 0 || end < 0 || start >= end {
 		response.UnprocessableEntity(konteks, "rentang waktu jadwal tidak valid", map[string]string{
 			"end_time": "harus format HH:MM dan lebih besar dari start_time",
 		})
 		return
 	}
-	if _, found := findOwnedSubject(user.ID, input.SubjectID); !found {
-		response.NotFound(konteks, "mata pelajaran tidak ditemukan")
-		return
-	}
 
-	conflict, err := ctrl.findConflict(konteks, user.ID, day, start, end, schedule.ID)
+	conflict, err := ctrl.findConflict(konteks, user.ID, schedule.DayOfWeek, start, end, schedule.ID)
 	if err != nil {
 		response.ServerError(konteks, err)
 		return
@@ -197,18 +227,12 @@ func (ctrl *ScheduleController) Update(konteks *gin.Context) {
 		return
 	}
 
-	schedule.SubjectID = input.SubjectID
-	schedule.DayOfWeek = day
-	schedule.StartTime = input.StartTime
-	schedule.EndTime = input.EndTime
-	schedule.Room = input.Room
-	schedule.Teacher = input.Teacher
-
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&schedule).Error; err != nil {
 		response.ServerError(konteks, err)
 		return
 	}
 	ctrl.DB.Preload("Subject").First(&schedule, schedule.ID)
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "jadwal diperbarui", schedule)
 }
 
@@ -229,6 +253,7 @@ func (ctrl *ScheduleController) Delete(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.NoContent(konteks)
 }
 

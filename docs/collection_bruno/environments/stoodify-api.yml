@@ -4,7 +4,7 @@ variables:
     value: http://127.0.0.1:8080/api
     description: Base URL API
   - name: authToken
-    value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjEsInR5cCI6ImFjY2VzcyIsImV4cCI6MTc5MzMwMTI5NiwiaWF0IjoxNzkzMzAwMzk2LCJqdGkiOiIyMDJmMTFhYWVhYjE3NzA4Mjk4MDE5NmViM2M0NDNhZiJ9.UGBuKqPNKFnBgLwiRUttRzYdmDnwLnurDrkso9H_Ytw
+    value: 
     description: Bearer Access Token
   - name: refreshToken
     value: 
@@ -27,6 +27,9 @@ variables:
   - name: sessionId
     value: 1
     description: Sample Study Session ID
+  - name: topicId
+    value: 1
+    description: Sample Curriculum Topic ID
   - name: recommendationId
     value: 1
     description: Sample Recommendation ID

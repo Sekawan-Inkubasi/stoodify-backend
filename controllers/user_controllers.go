@@ -142,6 +142,7 @@ func (ctrl *UserController) UpdatePreferences(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "preferensi diperbarui", pref)
 }
 

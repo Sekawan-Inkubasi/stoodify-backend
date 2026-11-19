@@ -32,6 +32,19 @@ type TaskInput struct {
 	Notes             string    `json:"notes" binding:"omitempty,max=2000"`
 }
 
+// TaskUpdateInput: semua field opsional — hanya field yang dikirim yang diubah (PATCH).
+type TaskUpdateInput struct {
+	SubjectID         *uint      `json:"subject_id" binding:"omitempty"`
+	Title             *string    `json:"title" binding:"omitempty,min=1,max=200"`
+	MaterialName      *string    `json:"material_name" binding:"omitempty,max=100"`
+	Description       *string    `json:"description" binding:"omitempty,max=2000"`
+	Type              *string    `json:"type" binding:"omitempty,oneof=exam project assignment reading"`
+	Deadline          *time.Time `json:"deadline" binding:"omitempty"`
+	Difficulty        *int       `json:"difficulty" binding:"omitempty,min=1,max=5"`
+	EstimatedDuration *int       `json:"estimated_duration" binding:"omitempty,min=5,max=1440"`
+	Notes             *string    `json:"notes" binding:"omitempty,max=2000"`
+}
+
 type TaskResponse struct {
 	migrations.Task
 	PriorityBreakdown *priority.Breakdown `json:"priority_breakdown,omitempty"`
@@ -153,6 +166,7 @@ func (ctrl *TaskController) Create(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.Created(konteks, "tugas dibuat", task)
 }
 
@@ -180,7 +194,7 @@ func (ctrl *TaskController) Update(konteks *gin.Context) {
 		return
 	}
 
-	var input TaskInput
+	var input TaskUpdateInput
 	if err := konteks.ShouldBindJSON(&input); err != nil {
 		response.ValidationError(konteks, err)
 		return
@@ -191,29 +205,46 @@ func (ctrl *TaskController) Update(konteks *gin.Context) {
 		response.NotFound(konteks, "tugas tidak ditemukan")
 		return
 	}
-	if _, ok := findOwnedSubject(user.ID, input.SubjectID); !ok {
-		response.NotFound(konteks, "mata pelajaran tidak ditemukan")
-		return
-	}
 
-	task.SubjectID = input.SubjectID
-	task.Title = input.Title
-	task.Description = input.Description
-	if input.Type != "" {
-		task.Type = input.Type
+	// Terapkan hanya field yang dikirim (PATCH parsial).
+	if input.SubjectID != nil {
+		if _, ok := findOwnedSubject(user.ID, *input.SubjectID); !ok {
+			response.NotFound(konteks, "mata pelajaran tidak ditemukan")
+			return
+		}
+		task.SubjectID = *input.SubjectID
 	}
-	task.Deadline = input.Deadline
-	task.Difficulty = input.Difficulty
-	if input.EstimatedDuration > 0 {
-		task.EstimatedDuration = input.EstimatedDuration
+	if input.Title != nil {
+		task.Title = *input.Title
 	}
-	task.Notes = input.Notes
+	if input.MaterialName != nil {
+		task.MaterialName = *input.MaterialName
+	}
+	if input.Description != nil {
+		task.Description = *input.Description
+	}
+	if input.Type != nil {
+		task.Type = *input.Type
+	}
+	if input.Deadline != nil {
+		task.Deadline = *input.Deadline
+	}
+	if input.Difficulty != nil {
+		task.Difficulty = *input.Difficulty
+	}
+	if input.EstimatedDuration != nil {
+		task.EstimatedDuration = *input.EstimatedDuration
+	}
+	if input.Notes != nil {
+		task.Notes = *input.Notes
+	}
 	recalcTask(&task)
 
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&task).Error; err != nil {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "tugas diperbarui", task)
 }
 
@@ -233,6 +264,7 @@ func (ctrl *TaskController) Delete(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.NoContent(konteks)
 }
 
@@ -263,6 +295,7 @@ func (ctrl *TaskController) UpdateStatus(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "status tugas diperbarui", task)
 }
 
@@ -300,6 +333,7 @@ func (ctrl *TaskController) UpdateProgress(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "progres tugas diperbarui", task)
 }
 

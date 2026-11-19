@@ -140,6 +140,8 @@ type Activity struct {
 	StartTime  string `json:"start_time"`
 	EndTime    string `json:"end_time"`
 	Recurrence string `json:"recurrence"`
+	// DayOfWeek dipakai untuk recurrence weekly (Monday..Sunday). Kosong = perilaku lama.
+	DayOfWeek string `gorm:"type:varchar(10)" json:"day_of_week"`
 }
 
 type StudySession struct {
@@ -153,6 +155,10 @@ type StudySession struct {
 	Status         string    `gorm:"default:planned" json:"status"`
 	AIGenerated    bool      `json:"ai_generated"`
 	Reason         string    `json:"reason"`
+	// Metadata dari service AI (diteruskan apa adanya, tidak diolah backend).
+	AISource    string `gorm:"type:varchar(20)" json:"ai_source,omitempty"`
+	AIWarnings  string `gorm:"type:text" json:"ai_warnings,omitempty"`
+	PlanVersion int    `json:"plan_version,omitempty"`
 
 	Task *Task `gorm:"foreignKey:TaskID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"task,omitempty"`
 }
@@ -180,6 +186,9 @@ type MaterialPrediction struct {
 	Prerequisites     string  `json:"prerequisites"`
 	Preparation       string  `json:"preparation_suggestion"`
 	UserFeedback      string  `json:"user_feedback,omitempty"`
+	// Metadata dari service AI (diteruskan apa adanya, tidak diolah backend).
+	AISource          string `gorm:"type:varchar(20)" json:"ai_source,omitempty"`
+	SyllabusReference string `gorm:"type:text" json:"syllabus_reference,omitempty"`
 
 	Subject *Subject `gorm:"foreignKey:SubjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"subject,omitempty"`
 }
@@ -243,6 +252,14 @@ func (UserTopicProgress) TableName() string {
 
 // ==================== MIGRATION HELPERS ====================
 
+// ScheduleSnapshot menyimpan jadwal sesi sebelum regenerasi otomatis, dipakai fitur "Urungkan".
+type ScheduleSnapshot struct {
+	Base
+	UserID      uint      `gorm:"index;not null" json:"user_id"`
+	SessionDate time.Time `gorm:"index;not null" json:"session_date"`
+	Payload     string    `gorm:"type:text;not null" json:"payload"` // JSON array sesi
+}
+
 func AllModels() []interface{} {
 	return []interface{}{
 		&User{},
@@ -259,6 +276,7 @@ func AllModels() []interface{} {
 		&PasswordResetToken{},
 		&CurriculumTopic{},
 		&UserTopicProgress{},
+		&ScheduleSnapshot{},
 	}
 }
 

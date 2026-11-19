@@ -211,6 +211,12 @@ Error:
 
 > ⚠️ **PENTING untuk keamanan:** kalau user mencoba akses data orang lain (mis. task id milik user lain), server balas **404**, bukan 403 — supaya tidak bisa ditebak apakah id itu ada. Di aplikasi, perlakukan 404 sebagai "tidak ada / tidak diizinkan".
 
+**PATCH bersifat parsial:** kirim hanya field yang ingin diubah. Field yang tidak dikirim tetap seperti sebelumnya (tidak direset ke kosong). Berlaku untuk `PATCH /api/users/me`, `/subjects/{id}`, `/schedules/{id}`, `/tasks/{id}`, `/activities/{id}`.
+
+```json
+PATCH /api/activities/12   { "title": "Latihan Robotik Persiapan Lomba" }
+```
+
 **Pagination** (endpoint GET yang bisa panjang): kirim `?page=1&per_page=20`. Balasan `meta`:
 
 ```json
@@ -536,10 +542,13 @@ Kegiatan berulang (ekskul, les, ibadah) yang **memakan waktu** — AI scheduler 
 
 ```json
 POST /activities/
-{ "title": "Latihan Basket", "start_time": "16:00", "end_time": "17:30", "recurrence": "weekly" }
+{ "title": "Latihan Basket", "start_time": "16:00", "end_time": "17:30", "recurrence": "weekly", "day_of_week": "Wednesday" }
 ```
 
 `recurrence`: `daily`, `weekly` (default), `monthly`, `none`.
+`day_of_week` (opsional, wajib untuk `weekly` agar akurat): `Monday`..`Sunday` / `Senin`..`Minggu` / `1`..`7`. Backend menormalkan nilainya (`Rabu` → `Wednesday`) dan menyimpannya; kalau kosong, engine AI menganggap kegiatan berlangsung **setiap hari**.
+
+`PATCH /activities/{id}` boleh hanya berisi field yang berubah, mis. `{ "day_of_week": "Thursday" }`.
 
 ---
 
@@ -556,6 +565,13 @@ POST /ai/schedule-recommendations/generate
 Body opsional: `{ "date": "2026-10-10" }` (default: hari ini).
 
 Server mengambil tugas aktif user, meminta AI menyusun jadwal belajar di slot kosong, lalu **langsung menyimpan hasilnya sebagai sesi belajar** (`study_sessions`).
+
+> ℹ️ **Jadwal juga disusun otomatis.** Setiap kali tugas/jadwal/aktivitas/preferensi berubah, backend menyusun ulang jadwal di belakang layar (debounce 3 detik, satu proses per user). Aplikasi cukup me-refresh `GET /study-sessions/`. Endpoint ini adalah **tombol manual** "Susun ulang" dan dibatasi **1× per 10 menit per user**:
+> - `429` + `Retry-After` → `message` berisi "Jadwal kamu baru saja diperbarui. Coba lagi dalam N menit…"
+> - `200` + "Jadwal kamu sudah paling pas…" → hasil AI identik, tidak ada yang ditulis.
+> - `201` → jadwal benar-benar berubah.
+>
+> Sesi hasil susunan AI diberi `ai_source` (`ai`/`fallback`) dan `ai_warnings`; sesi yang diubah user (`PATCH /study-sessions/:id`) menjadi `ai_generated=false` dan **tidak akan digeser** oleh penyusunan otomatis berikutnya.
 
 Sukses → **201**, `data` berisi array sesi:
 
@@ -617,6 +633,19 @@ Backend **tidak punya rekomendasi cadangan lokal** — semua keputusan ada di se
 | `502` | AI tidak bisa dihubungi / jawabannya tidak valid | "Layanan AI tidak tersedia", sediakan tombol coba lagi dan input manual |
 
 Pada `429`/`503`, isi `message` berasal langsung dari service AI sehingga bisa ditampilkan apa adanya.
+
+### 9.5 Urungkan perubahan jadwal
+
+```
+POST /ai/schedule-recommendations/undo
+```
+
+Mengembalikan jadwal hari itu ke kondisi sebelum penyusunan otomatis terakhir (snapshot disimpan backend sebelum setiap perubahan).
+
+- `200` → jadwal lama dipulihkan, `data` berisi sesi hasil pemulihan.
+- `404` → tidak ada snapshot (belum pernah disusun ulang, atau sudah kedaluwarsa > 7 hari).
+
+Dipakai untuk tombol **Urungkan** pada toast "Jadwal diperbarui".
 
 ---
 
@@ -830,5 +859,6 @@ POST /ai/reschedule                 → semua sesi planned disusun ulang ke slot
 | `AI_PREDICTOR_URL` | Endpoint AI Spec 2 (prediksi materi) |
 | `AI_API_KEY` | Api key bearer untuk kedua endpoint (opsional) |
 | `AI_TIMEOUT_SECONDS` | batas tunggu panggilan AI dalam detik (default `15`) |
+| `AI_CURRICULUM` | acuan kurikulum untuk prediksi materi (default `Kurikulum Merdeka`) |
 
 AI memberi rekomendasi, **siswa tetap yang memutuskan** (bisa tolak/ubah). Setiap output AI wajib menyertakan alasan (`reason`) yang mudah dipahami siswa — tampilkan field itu apa adanya.

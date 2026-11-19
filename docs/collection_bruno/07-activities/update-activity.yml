@@ -19,7 +19,8 @@ http:
     data: |
       {
         "title": "Latihan Robotik Persiapan Lomba",
-        "end_time": "18:00"
+        "end_time": "18:00",
+        "day_of_week": "Wednesday"
       }
 settings:
   encodeUrl: true
@@ -27,4 +28,6 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: true
-docs: Update aktivitas
+docs: |-
+  Update parsial: kirim hanya field yang ingin diubah.
+  Field lain (start_time, recurrence, dst) tetap seperti sebelumnya.

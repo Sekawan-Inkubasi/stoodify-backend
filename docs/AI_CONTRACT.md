@@ -37,10 +37,20 @@ Prinsip kompatibilitas: backend menerima **lebih dari satu bentuk** respons supa
   "tasks": [ /* model Task lengkap: id, title, material_name, deadline, difficulty, est_duration, type, status, progress, priority_score */ ],
   "schedules": [ /* jadwal sekolah: day_of_week, start_time, end_time, room, teacher */ ],
   "activities": [ /* aktivitas rutin siswa */ ],
-  "existing_sessions": [ /* sesi planned pada tanggal target, agar AI tidak menumpuk slot */ ]
+  "existing_sessions": [
+    { "session_id": 91, "task_id": 12, "session_date": "2026-11-18", "start_time": "16:00",
+      "duration": 60, "status": "planned", "locked": true }
+  ]
 }
 ```
-Catatan: `tasks` dikirim terurut `priority_score DESC, deadline ASC` dan hanya yang `status <> 'done'`. `break_duration`/`max_sessions_per_day` memakai default 15/3 bila preferensi siswa masih kosong.
+Catatan:
+- `tasks` dikirim terurut `priority_score DESC, deadline ASC`, hanya yang `status <> 'done'`, dan **sudah menyertakan objek `subject`** (nama mapel).
+- `schedules` dikirim dengan `title` (nama mapel) + `day_of_week`/`start_time`/`end_time`.
+- `activities` menyertakan `day_of_week` untuk kegiatan mingguan.
+- `locked: true` pada `existing_sessions` berarti slot itu **tidak boleh digeser/dipakai ulang**: sesi milik user (`ai_generated=false`), sesi yang mulai < 24 jam, atau status selain `planned`. Sampai engine mendukungnya, backend menyaring sendiri slot yang bentrok.
+- `timezone` mengikuti env `TZ` server (default `Asia/Jakarta`).
+- `break_duration`/`max_sessions_per_day` masih dikirim, tetapi **belum dipakai** engine (lihat `docs/divisi/AI-TODO.md`).
+- Backend memanggil endpoint ini **otomatis** setiap ada perubahan tugas/konteks (debounce 3 detik, single-flight per user), jadi endpoint harus aman dipanggil berulang.
 
 ### Respons service AI → backend
 Diterima dalam tiga bentuk, isi slot sama:
@@ -96,8 +106,8 @@ Aturan penanganan:
   "subject_id": 33,
   "subject": "Matematika",
   "difficulty": 5,
-  "grade": 12,
-  "major": "Sistem Informasi Jaringan Aplikasi",
+  "class_level": "XII",
+  "curriculum": "Kurikulum Merdeka",
   "history": [ /* maksimal 10 task terakhir mapel ini, urut deadline DESC; termasuk material_name */ ]
 }
 ```
@@ -156,7 +166,23 @@ Aturan tambahan:
 
 ---
 
-## 4. Yang Bukan Bagian dari Bridge AI
+## 4. Umpan Balik (Feedback)
+
+Saat user menekan akurat/tidak akurat pada sebuah prediksi, backend meneruskan ke engine:
+
+```
+POST {base AI_PREDICTOR_URL}/feedback
+{ "data_feedback": [ { "prediction_id": 12, "subject_id": 33,
+    "predicted_topic": "Integral Tentu", "confidence": 88,
+    "reason": "...", "feedback": "accurate" } ] }
+```
+
+- Best-effort: timeout 3 detik, kegagalan hanya dicatat di log (tidak menggagalkan request user).
+- Base URL diturunkan dari `AI_PREDICTOR_URL` (`.../predict` → `.../feedback`).
+
+---
+
+## 5. Yang Bukan Bagian dari Bridge AI
 
 - `POST /api/ai/reschedule` **tidak memanggil service AI**. Endpoint ini murni lokal: mengambil sesi `planned` milik user lalu menyusun ulang jamnya berurutan dari `preferences.start_time` hari ini. Rescheduling adaptif berbasis AI belum diimplementasi.
 - `GET /api/ai/schedule-recommendations`, `POST .../accept`, `POST .../reject`, `GET /api/ai/material-predictions/:subjectId`, `POST .../:id/feedback` hanya operasi database.

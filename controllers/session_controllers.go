@@ -81,6 +81,7 @@ func (ctrl *StudySessionController) Create(konteks *gin.Context) {
 		return
 	}
 	ctrl.DB.Preload("Task").First(&session, session.ID)
+	picuRegenerasi(user.ID)
 	response.Created(konteks, "sesi belajar dibuat", session)
 }
 
@@ -154,6 +155,7 @@ func (ctrl *StudySessionController) Update(konteks *gin.Context) {
 
 	if input.SessionDate != nil {
 		session.SessionDate = *input.SessionDate
+		session.AIGenerated = false // tanggal diubah manual oleh user -> pinned
 	}
 	if input.StartTime != nil {
 		if hhmmMinutes(*input.StartTime) < 0 {
@@ -163,10 +165,11 @@ func (ctrl *StudySessionController) Update(konteks *gin.Context) {
 			return
 		}
 		session.StartTime = *input.StartTime
-		session.AIGenerated = false // diubah manual oleh user
+		session.AIGenerated = false // diubah manual oleh user -> pinned
 	}
 	if input.Duration != nil {
 		session.Duration = *input.Duration
+		session.AIGenerated = false // durasi diubah manual oleh user -> pinned
 	}
 	if input.Status != nil {
 		session.Status = *input.Status
@@ -176,6 +179,7 @@ func (ctrl *StudySessionController) Update(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "sesi belajar diperbarui", session)
 }
 
@@ -196,5 +200,6 @@ func (ctrl *StudySessionController) Delete(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.NoContent(konteks)
 }

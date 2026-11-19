@@ -1,0 +1,22 @@
+info:
+  name: Undo Schedule Changes
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: "{{baseUrl}}/ai/schedule-recommendations/undo"
+  headers:
+    - name: Accept
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Kembalikan jadwal ke snapshot sebelum penyusunan otomatis terakhir (tombol Urungkan)
