@@ -19,9 +19,7 @@ http:
     data: |
       {
         "title": "Latihan Robotik Persiapan Lomba",
-        "start_time": "15:30",
         "end_time": "18:00",
-        "recurrence": "weekly",
         "day_of_week": "Wednesday"
       }
 settings:
@@ -30,4 +28,6 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: true
-docs: Update aktivitas
+docs: |-
+  Update parsial: kirim hanya field yang ingin diubah.
+  Field lain (start_time, recurrence, dst) tetap seperti sebelumnya.

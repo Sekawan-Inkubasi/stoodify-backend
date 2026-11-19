@@ -27,6 +27,17 @@ type SubjectInput struct {
 	Difficulty int    `json:"difficulty" binding:"omitempty,min=1,max=5"`
 }
 
+// SubjectUpdateInput: semua field opsional — hanya field yang dikirim yang diubah (PATCH).
+type SubjectUpdateInput struct {
+	Name       *string `json:"name" binding:"omitempty,min=1,max=100"`
+	Code       *string `json:"code" binding:"omitempty,max=20"`
+	Teacher    *string `json:"teacher" binding:"omitempty,max=100"`
+	Color      *string `json:"color" binding:"omitempty,max=20"`
+	AccentBg   *string `json:"accent_bg" binding:"omitempty,max=30"`
+	Category   *string `json:"category" binding:"omitempty,max=50"`
+	Difficulty *int    `json:"difficulty" binding:"omitempty,min=1,max=5"`
+}
+
 // GetAll mendukung ?search= dan pagination.
 func (ctrl *SubjectController) GetAll(konteks *gin.Context) {
 	user := currentUser(konteks)
@@ -103,7 +114,7 @@ func (ctrl *SubjectController) Update(konteks *gin.Context) {
 		return
 	}
 
-	var input SubjectInput
+	var input SubjectUpdateInput
 	if err := konteks.ShouldBindJSON(&input); err != nil {
 		response.ValidationError(konteks, err)
 		return
@@ -115,14 +126,27 @@ func (ctrl *SubjectController) Update(konteks *gin.Context) {
 		return
 	}
 
-	subject.Name = input.Name
-	subject.Code = input.Code
-	subject.Teacher = input.Teacher
-	subject.Color = input.Color
-	subject.AccentBg = input.AccentBg
-	subject.Category = input.Category
-	if input.Difficulty > 0 {
-		subject.Difficulty = input.Difficulty
+	// Terapkan hanya field yang dikirim (PATCH parsial).
+	if input.Name != nil {
+		subject.Name = *input.Name
+	}
+	if input.Code != nil {
+		subject.Code = *input.Code
+	}
+	if input.Teacher != nil {
+		subject.Teacher = *input.Teacher
+	}
+	if input.Color != nil {
+		subject.Color = *input.Color
+	}
+	if input.AccentBg != nil {
+		subject.AccentBg = *input.AccentBg
+	}
+	if input.Category != nil {
+		subject.Category = *input.Category
+	}
+	if input.Difficulty != nil {
+		subject.Difficulty = *input.Difficulty
 	}
 
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&subject).Error; err != nil {

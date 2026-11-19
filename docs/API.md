@@ -211,6 +211,12 @@ Error:
 
 > ⚠️ **PENTING untuk keamanan:** kalau user mencoba akses data orang lain (mis. task id milik user lain), server balas **404**, bukan 403 — supaya tidak bisa ditebak apakah id itu ada. Di aplikasi, perlakukan 404 sebagai "tidak ada / tidak diizinkan".
 
+**PATCH bersifat parsial:** kirim hanya field yang ingin diubah. Field yang tidak dikirim tetap seperti sebelumnya (tidak direset ke kosong). Berlaku untuk `PATCH /api/users/me`, `/subjects/{id}`, `/schedules/{id}`, `/tasks/{id}`, `/activities/{id}`.
+
+```json
+PATCH /api/activities/12   { "title": "Latihan Robotik Persiapan Lomba" }
+```
+
 **Pagination** (endpoint GET yang bisa panjang): kirim `?page=1&per_page=20`. Balasan `meta`:
 
 ```json
@@ -540,7 +546,9 @@ POST /activities/
 ```
 
 `recurrence`: `daily`, `weekly` (default), `monthly`, `none`.
-`day_of_week` (opsional, wajib untuk `weekly` agar akurat): `Monday`..`Sunday` / `Senin`..`Minggu` / `1`..`7`. Kalau kosong, engine AI menganggap kegiatan berlangsung **setiap hari**.
+`day_of_week` (opsional, wajib untuk `weekly` agar akurat): `Monday`..`Sunday` / `Senin`..`Minggu` / `1`..`7`. Backend menormalkan nilainya (`Rabu` → `Wednesday`) dan menyimpannya; kalau kosong, engine AI menganggap kegiatan berlangsung **setiap hari**.
+
+`PATCH /activities/{id}` boleh hanya berisi field yang berubah, mis. `{ "day_of_week": "Thursday" }`.
 
 ---
 
