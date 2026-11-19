@@ -27,6 +27,9 @@ variables:
   - name: sessionId
     value: 1
     description: Sample Study Session ID
+  - name: topicId
+    value: 1
+    description: Sample Curriculum Topic ID
   - name: recommendationId
     value: 1
     description: Sample Recommendation ID

@@ -1,0 +1,26 @@
+info:
+  name: Get Curriculum Roadmap
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/curriculum/roadmap/{{subjectId}}"
+  params:
+    - name: subjectId
+      value: "{{subjectId}}"
+      type: path
+  headers:
+    - name: Accept
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Roadmap silabus + progres per mapel

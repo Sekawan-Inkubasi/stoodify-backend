@@ -1,0 +1,27 @@
+info:
+  name: Upload Avatar
+  type: http
+  seq: 6
+http:
+  method: POST
+  url: "{{baseUrl}}/users/avatar"
+  headers:
+    - name: Accept
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: multipart-form
+    data:
+      - name: avatar
+        type: file
+        value: ""
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Unggah foto profil (JPG/PNG/WEBP, maks 2MB)

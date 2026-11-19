@@ -19,7 +19,10 @@ http:
     data: |
       {
         "title": "Latihan Robotik Persiapan Lomba",
-        "end_time": "18:00"
+        "start_time": "15:30",
+        "end_time": "18:00",
+        "recurrence": "weekly",
+        "day_of_week": "Wednesday"
       }
 settings:
   encodeUrl: true

@@ -19,10 +19,10 @@ http:
     data: |
       {
         "title": "Latihan Ekstrakurikuler Robotik",
-        "activity_date": "2026-10-31",
         "start_time": "15:30",
         "end_time": "17:30",
-        "recurrence": "Weekly"
+        "recurrence": "weekly",
+        "day_of_week": "Wednesday"
       }
 scripts:
   res: |

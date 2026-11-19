@@ -1,0 +1,37 @@
+info:
+  name: Create Curriculum Topic
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/curriculum/topics"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "subject_id": {{subjectId}},
+        "title": "Integral Tentu",
+        "description": "Luas daerah di bawah kurva",
+        "order": 1,
+        "grade": 12,
+        "major": "SIJA",
+        "term": 1,
+        "estimated_minutes": 90
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Tambah topik silabus
