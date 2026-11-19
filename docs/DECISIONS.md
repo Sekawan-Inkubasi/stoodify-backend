@@ -63,3 +63,18 @@ Catatan pertimbangan dan keputusan desain arsitektural teknis Stoodify Backend.
   1. Mengubah konstanta `AccessTTL` dan `RefreshTTL` menjadi variabel package yang diinisialisasi melalui fungsi `init()`.
   2. Membaca `JWT_ACCESS_TTL` dan `JWT_REFRESH_TTL` dari environment variable (format `time.ParseDuration`, misal `30m`, `1h`, `168h`), dengan fallback aman ke nilai standar 15 menit dan 7 hari.
 - **Konsekuensi:** Operator dan developer dapat menyesuaikan masa aktif sesi secara dinamis pada environment development maupun production.
+
+---
+
+---
+
+## ADR-008: Penjadwalan Otomatis dengan Planner Internal
+- **Status:** Diterima & Diimplementasikan
+- **Konteks:** Fitur jadwal hanya berguna kalau selalu mutakhir. Memanggil AI setiap kali user menyimpan tugas tanpa pengaman menghasilkan banyak panggilan LLM (user bisa menambah 4 tugas dalam 30 detik) dan jadwal yang berubah berkali-kali di depan user.
+- **Keputusan:**
+  1. Setiap perubahan tugas/jadwal/aktivitas/preferensi memicu regenerasi lewat `workers.Planner`: **debounce 3 detik** + **single-flight per user** + flag `dirty` (maksimal satu susulan).
+  2. Hasil langsung dipakai (tanpa terima/tolak); yang diubah user (`ai_generated=false`) dan sesi < 24 jam **tidak digeser**.
+  3. Kegagalan AI **tidak** mengganggu user: jadwal lama dipertahankan, error hanya di log.
+  4. Sebelum menulis, backend menyimpan snapshot untuk fitur **Urungkan**; penulisan dalam satu transaksi (hapus sesi AI `planned` di tanggal itu → insert baru).
+  5. Tombol manual "Susun ulang" dibatasi 1×/10 menit per user.
+- **Konsekuensi:** keputusan penjadwalan tetap milik AI (bridge-only), backend hanya mengatur ritme, menyimpan, dan menjaga sesi milik user. Horizon masih satu tanggal (hari ini) + rollover 00:05; horizon 7 hari menunggu dukungan parameter di engine.

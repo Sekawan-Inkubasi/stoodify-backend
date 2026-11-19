@@ -40,7 +40,7 @@ func TestParseSchedulerResponseBentukRespons(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			slots := parseSchedulerResponse(json.RawMessage(tc.raw))
+			slots, _ := parseSchedulerResponse(json.RawMessage(tc.raw))
 			if len(slots) != tc.wantLen {
 				t.Fatalf("jumlah slot = %d, mau %d", len(slots), tc.wantLen)
 			}
@@ -234,8 +234,15 @@ func setupAITestDB(t *testing.T) *gorm.DB {
 		&migrations.Activity{},
 		&migrations.StudySession{},
 		&migrations.MaterialPrediction{},
+		&migrations.ScheduleSnapshot{},
 	))
 	config.DB = db
+
+	// Reset batas "Susun ulang" manual antar test (state-nya global per proses).
+	susunUlangManual.mu.Lock()
+	susunUlangManual.terakhir = make(map[uint]time.Time)
+	susunUlangManual.mu.Unlock()
+
 	return db
 }
 
@@ -367,4 +374,126 @@ func TestGeneratePredictionRateLimitDiteruskan(t *testing.T) {
 	var jumlah int64
 	require.NoError(t, db.Model(&migrations.MaterialPrediction{}).Where("user_id = ?", user.ID).Count(&jumlah).Error)
 	assert.Zero(t, jumlah, "rate limit tidak boleh menyimpan prediksi parsial")
+}
+
+// ==================== Auto-schedule: metadata, locked, limit, undo ====================
+
+func TestParseSchedulerResponseMeta(t *testing.T) {
+	raw := `{"sessions":[{"task_id":7,"start_time":"16:00","duration":60}],"source":"fallback","warnings":["tugas X tanpa deadline"],"fallback_reason":"LLM 503"}`
+	slots, meta := parseSchedulerResponse(json.RawMessage(raw))
+
+	require.Len(t, slots, 1)
+	assert.Equal(t, "fallback", meta.Source)
+	assert.Equal(t, []string{"tugas X tanpa deadline"}, meta.Warnings)
+	assert.Equal(t, "LLM 503", meta.FallbackReason)
+}
+
+func TestSusunSesiMenghormatiSesiTerkunci(t *testing.T) {
+	db := setupAITestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	user := migrations.User{Name: "Siswa Pin", Email: "pin@example.com", PasswordHash: "x"}
+	require.NoError(t, db.Create(&user).Error)
+	task := migrations.Task{UserID: user.ID, Title: "Tugas", Deadline: time.Now().Add(48 * time.Hour),
+		Difficulty: 3, EstimatedDuration: 60, Status: migrations.StatusPending}
+	require.NoError(t, db.Create(&task).Error)
+
+	// Sesi milik user (pinned) 16:00-17:00 hari ini.
+	pinned := migrations.StudySession{
+		UserID: user.ID, TaskID: task.ID, SessionDate: time.Now(),
+		StartTime: "16:00", Duration: 60, Status: migrations.SessionPlanned, AIGenerated: false,
+	}
+	require.NoError(t, db.Create(&pinned).Error)
+
+	ctrl := NewAIController(db)
+	k := konteksJadwal{
+		User:     user,
+		Tanggal:  time.Now(),
+		Pref:     migrations.UserPreference{SessionDuration: 60},
+		Existing: []migrations.StudySession{pinned},
+	}
+	slots := []slotRekomendasi{
+		{TaskID: task.ID, StartTime: "16:30", Duration: 60}, // bentrok dengan pinned
+		{TaskID: task.ID, StartTime: "19:00", Duration: 60}, // aman
+	}
+
+	hasil := ctrl.susunSesi(k, slots, aiSchedulerMeta{Source: "ai"})
+	require.Len(t, hasil, 1, "slot yang bentrok dengan sesi pinned harus dibuang")
+	assert.Equal(t, "19:00", hasil[0].StartTime)
+	assert.Equal(t, "ai", hasil[0].AISource)
+}
+
+func TestGenerateScheduleRateLimitManual(t *testing.T) {
+	db := setupAITestDB(t)
+	r, user, task, _ := setupAITestRouter(t, db)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"sessions":[{"task_id":` + strconv.FormatUint(uint64(task.ID), 10) +
+			`,"recommended_date":"` + time.Now().Format("2006-01-02") + `","start_time":"19:00","duration":60}],"source":"ai"}`))
+	}))
+	defer srv.Close()
+	t.Setenv("AI_SCHEDULER_URL", srv.URL)
+
+	call := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/ai/schedule-recommendations/generate", strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	pertama := call()
+	assert.Equal(t, http.StatusCreated, pertama.Code)
+
+	kedua := call()
+	assert.Equal(t, http.StatusTooManyRequests, kedua.Code)
+	assert.Contains(t, kedua.Body.String(), "Coba lagi dalam")
+	assert.NotEmpty(t, kedua.Header().Get("Retry-After"))
+
+	// Sesi tidak bertambah karena request kedua ditolak.
+	var jumlah int64
+	require.NoError(t, db.Model(&migrations.StudySession{}).Where("user_id = ?", user.ID).Count(&jumlah).Error)
+	assert.Equal(t, int64(1), jumlah)
+}
+
+func TestUndoRegenerasiMengembalikanJadwal(t *testing.T) {
+	db := setupAITestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	user := migrations.User{Name: "Siswa Undo", Email: "undo@example.com", PasswordHash: "x"}
+	require.NoError(t, db.Create(&user).Error)
+	task := migrations.Task{UserID: user.ID, Title: "Tugas", Deadline: time.Now().Add(48 * time.Hour),
+		Difficulty: 3, EstimatedDuration: 60, Status: migrations.StatusPending}
+	require.NoError(t, db.Create(&task).Error)
+
+	// Kondisi sekarang: sesi AI jam 19:00.
+	require.NoError(t, db.Create(&migrations.StudySession{
+		UserID: user.ID, TaskID: task.ID, SessionDate: time.Now(),
+		StartTime: "19:00", Duration: 60, Status: migrations.SessionPlanned, AIGenerated: true,
+	}).Error)
+
+	// Snapshot berisi jadwal sebelumnya (jam 16:00).
+	lama, err := json.Marshal([]migrations.StudySession{{
+		UserID: user.ID, TaskID: task.ID, SessionDate: time.Now(),
+		StartTime: "16:00", Duration: 60, Status: migrations.SessionPlanned, AIGenerated: true,
+	}})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&migrations.ScheduleSnapshot{
+		UserID: user.ID, SessionDate: time.Now(), Payload: string(lama),
+	}).Error)
+
+	ctrl := NewAIController(db)
+	w := httptest.NewRecorder()
+	konteks, _ := gin.CreateTestContext(w)
+	konteks.Request = httptest.NewRequest(http.MethodPost, "/api/ai/schedule-recommendations/undo", nil)
+	konteks.Set(middlewares.ContextUserKey, user)
+
+	ctrl.UndoRegenerasi(konteks)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var sesi []migrations.StudySession
+	require.NoError(t, db.Where("user_id = ?", user.ID).Find(&sesi).Error)
+	require.Len(t, sesi, 1)
+	assert.Equal(t, "16:00", sesi[0].StartTime, "jadwal harus kembali ke snapshot")
 }

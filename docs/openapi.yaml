@@ -273,6 +273,10 @@ components:
           - monthly
           - none
           example: weekly
+        day_of_week:
+          type: string
+          description: Opsional; wajib untuk recurrence weekly. Monday..Sunday / Senin..Minggu / 1..7.
+          example: Wednesday
     StudySession:
       type: object
       properties:
@@ -1271,6 +1275,18 @@ paths:
       responses:
         '200':
           description: Daftar rekomendasi sesi
+  /ai/schedule-recommendations/undo:
+    post:
+      tags:
+      - AI Bridge
+      summary: Urungkan Perubahan Jadwal (kembali ke snapshot terakhir)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Jadwal dipulihkan ke kondisi sebelum penyusunan otomatis terakhir
+        '404':
+          description: Tidak ada snapshot yang bisa dikembalikan
   /ai/schedule-recommendations/{id}/accept:
     post:
       tags:

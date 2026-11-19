@@ -68,6 +68,7 @@ func (ctrl *SubtaskController) Create(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.Created(konteks, "subtugas dibuat", subtask)
 }
 
@@ -106,6 +107,7 @@ func (ctrl *SubtaskController) Update(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "subtugas diperbarui", subtask)
 }
 
@@ -130,5 +132,6 @@ func (ctrl *SubtaskController) Delete(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.NoContent(konteks)
 }

@@ -272,6 +272,7 @@ func SetupRoutes() *gin.Engine {
 				// Schedule Recommendations
 				ai.POST("/schedule-recommendations/generate", aiCtrl.GenerateSchedule)
 				ai.GET("/schedule-recommendations", aiCtrl.GetScheduleRecommendations)
+				ai.POST("/schedule-recommendations/undo", aiCtrl.UndoRegenerasi)
 				ai.POST("/schedule-recommendations/:id/accept", aiCtrl.AcceptRecommendation)
 				ai.POST("/schedule-recommendations/:id/reject", aiCtrl.RejectRecommendation)
 				ai.POST("/reschedule", aiCtrl.Reschedule)

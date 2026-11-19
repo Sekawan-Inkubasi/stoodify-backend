@@ -8,8 +8,10 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"stoodify_backend/config"
+	"stoodify_backend/controllers"
 	"stoodify_backend/internal/seeder"
 	"stoodify_backend/migrations"
 	"stoodify_backend/routes"
@@ -85,9 +87,16 @@ func runServe(args []string) {
 
 	db := config.KonekKeDB()
 
-	// Scheduler: tandai tugas terlambat + notifikasi H-1/H-0.
+	// Planner: penyusunan ulang jadwal otomatis saat ada perubahan tugas/konteks.
+	// Debounce 3 detik + single-flight per user; kegagalan AI tidak mengganggu user.
+	planner := workers.NewPlanner(3*time.Second, func(userID uint) {
+		controllers.NewAIController(db).RegenerasiOtomatis(userID)
+	})
+	controllers.SetPemicuRegenerasi(planner)
+
+	// Scheduler: tandai tugas terlambat + notifikasi H-1/H-0 + rollover jadwal harian.
 	berhenti := make(chan struct{})
-	go workers.JalankanScheduler(db, berhenti)
+	go workers.JalankanScheduler(db, berhenti, planner.Enqueue)
 
 	// Graceful shutdown saat Ctrl+C / SIGTERM.
 	sinyal := make(chan os.Signal, 1)

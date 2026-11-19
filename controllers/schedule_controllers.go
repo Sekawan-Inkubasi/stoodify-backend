@@ -121,6 +121,7 @@ func (ctrl *ScheduleController) Create(konteks *gin.Context) {
 		return
 	}
 	ctrl.DB.Preload("Subject").First(&schedule, schedule.ID)
+	picuRegenerasi(user.ID)
 	response.Created(konteks, "jadwal dibuat", schedule)
 }
 
@@ -209,6 +210,7 @@ func (ctrl *ScheduleController) Update(konteks *gin.Context) {
 		return
 	}
 	ctrl.DB.Preload("Subject").First(&schedule, schedule.ID)
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "jadwal diperbarui", schedule)
 }
 
@@ -229,6 +231,7 @@ func (ctrl *ScheduleController) Delete(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.NoContent(konteks)
 }
 

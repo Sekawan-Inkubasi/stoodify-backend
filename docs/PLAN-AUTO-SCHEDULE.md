@@ -4,9 +4,10 @@ Dokumen perencanaan perubahan **backend** untuk fitur rekomendasi jadwal yang be
 Ruang lingkup: `stoodify-backend` saja. Perubahan divisi lain ada di:
 
 - Mobile: [`docs/divisi/MOBILE-TODO.md`](divisi/MOBILE-TODO.md)
-- AI (`stoodify-ai-1`): `docs/TODO-AUTO-SCHEDULE.md` di repo AI
+- AI: [`docs/divisi/AI-TODO.md`](divisi/AI-TODO.md)
 
-Status: **rencana, belum diimplementasikan.**
+Status: **fase 1–4 sudah diimplementasikan** (fondasi data, planner, kontrol user, rollover harian) — lihat ADR-008.
+Fase 5 (horizon 7 hari, feedback loop lanjutan) menunggu dukungan engine AI.
 
 ---
 

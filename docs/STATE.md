@@ -16,6 +16,9 @@ Catatan serah terima kondisi codebase saat ini (*current state*) untuk sesi agen
   6. **Pembersihan Sesi Planned Otomatis (ADR-006):** Pada `controllers/ai_controllers.go:GenerateSchedule`, sesi planned usang dibersihkan sebelum menyimpan rekomendasi baru dari AI untuk mencegah penumpukan duplikat sesi di kalender. Sesi berstatus `skipped` difilter keluar dari `GetScheduleRecommendations`.
   7. **Fleksibilitas Masa Berlaku Token (ADR-007):** `internal/token/token.go` mendukung kustomisasi `JWT_ACCESS_TTL` dan `JWT_REFRESH_TTL` via environment variable (default 15m dan 7d).
   8. Perubahan frontend mobile (dialog modern Stoodify, ChatDrawer anti-overlap & backdrop overlay, keyboard avoiding view, deduplikasi kalender, dan proactive token refresh) berada di repo `stoodify-apk`.
+  9. **Penjadwalan otomatis (ADR-008):** `workers.Planner` (debounce 3 detik + single-flight + flag dirty) dipicu setiap perubahan tugas/subtask/jadwal/aktivitas/preferensi. Hasil AI langsung dipakai; sesi milik user (`ai_generated=false`) dan sesi < 24 jam tidak digeser; kegagalan AI = diam (jadwal lama dipertahankan).
+  10. **Kontrol user:** `POST /api/ai/schedule-recommendations/undo` + tabel `schedule_snapshots` (snapshot sebelum setiap regenerasi, untuk tombol "Urungkan"); tombol manual "Susun ulang" dibatasi 1×/10 menit dengan pesan jelas; `PATCH /study-sessions/:id` menandai sesi sebagai pinned.
+  11. **Metadata & konteks AI:** kolom `ai_source`, `ai_warnings` (sesi) dan `ai_source`, `syllabus_reference` (prediksi); `activities.day_of_week`; predictor mengirim `class_level`/`curriculum`; `existing_sessions` menyertakan `locked`; feedback user diteruskan ke `/feedback` engine.
 - **Status Backlog**: seluruh item di `docs/to-do.md` Tahap 1–6 selesai, seluruh temuan gap integrasi mobile (`GAP-01` s.d. `GAP-08`) selesai 100%, kecuali: reset password (kode selesai, verifikasi end-to-end belum), dataset kurikulum (endpoint siap, katalog topik sengaja kosong), dan rescheduling adaptif berbasis AI.
 
 ## Fitur yang Siap Digunakan (MVP Ready)
@@ -33,7 +36,9 @@ Catatan serah terima kondisi codebase saat ini (*current state*) untuk sesi agen
 
 ## Sisa Roadmap
 - **Rencana degradasi di sisi Python**: backend sudah murni bridge. Kalau service AI mati atau LLM limit, fitur jadwal & prediksi mengembalikan `502`/`429` (tidak ada jadwal cadangan). Rencana degradasi/cache harus dibuat di service AI.
-- **Rescheduling adaptif berbasis AI**: `POST /api/ai/reschedule` masih menyusun ulang sesi secara lokal (berurutan dari `start_time` preferensi) dan mengabaikan jadwal sekolah/aktivitas. Perlu keputusan produk sebelum diubah.
+- **Rescheduling adaptif berbasis AI**: `POST /api/ai/reschedule` masih menyusun ulang sesi secara lokal (berurutan dari `start_time` preferensi) dan mengabaikan jadwal sekolah/aktivitas. Alur otomatis sudah memakai AI; endpoint lama ini tinggal dipensiunkan atau diproxy ke engine.
+- **Horizon penjadwalan**: otomatis masih satu tanggal + rollover 00:05. Horizon 7 hari menunggu parameter di engine AI (`docs/divisi/AI-TODO.md`).
+- **Mobile**: alur terima/tolak harus dihapus, diganti toast + tombol Urungkan (`docs/divisi/MOBILE-TODO.md`).
 - **Dataset kurikulum**: endpoint siap, tetapi katalog topik sengaja belum diisi (jangan isi topik tanpa sumber).
 - **Gate format**: sudah setara di dua branch — `dev` (`ci.yml`) dan `main` (`ci-cd.yml`, diperbaiki pada merge `0a6839d`) sama-sama memakai `test -z "$(gofmt -l .)"` + `go test -race ./...` + `go vet ./...` sebelum docker build.
 - **Penyimpanan avatar**: masih disk lokal (`uploads/avatars`), belum object storage; hilang saat redeploy di platform ephemeral.

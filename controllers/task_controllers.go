@@ -153,6 +153,7 @@ func (ctrl *TaskController) Create(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.Created(konteks, "tugas dibuat", task)
 }
 
@@ -214,6 +215,7 @@ func (ctrl *TaskController) Update(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "tugas diperbarui", task)
 }
 
@@ -233,6 +235,7 @@ func (ctrl *TaskController) Delete(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.NoContent(konteks)
 }
 
@@ -263,6 +266,7 @@ func (ctrl *TaskController) UpdateStatus(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "status tugas diperbarui", task)
 }
 
@@ -300,6 +304,7 @@ func (ctrl *TaskController) UpdateProgress(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "progres tugas diperbarui", task)
 }
 

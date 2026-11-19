@@ -9,9 +9,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -54,7 +56,57 @@ type slotRekomendasi struct {
 	Reason          string `json:"reason"`
 }
 
-// GenerateSchedule memanggil AI Spec 1
+// ==================== Penjadwalan otomatis & manual ====================
+
+// jedaSusunUlangManual: batas tombol "Susun ulang" per user.
+const jedaSusunUlangManual = 10 * time.Minute
+
+var susunUlangManual = struct {
+	mu       sync.Mutex
+	terakhir map[uint]time.Time
+}{terakhir: make(map[uint]time.Time)}
+
+// bolehSusunUlangManual mengembalikan sisa waktu tunggu dan status boleh/tidak.
+func bolehSusunUlangManual(userID uint) (time.Duration, bool) {
+	susunUlangManual.mu.Lock()
+	defer susunUlangManual.mu.Unlock()
+	terakhir, ada := susunUlangManual.terakhir[userID]
+	if !ada {
+		return 0, true
+	}
+	sisa := jedaSusunUlangManual - time.Since(terakhir)
+	if sisa <= 0 {
+		return 0, true
+	}
+	return sisa, false
+}
+
+func catatSusunUlangManual(userID uint) {
+	susunUlangManual.mu.Lock()
+	defer susunUlangManual.mu.Unlock()
+	susunUlangManual.terakhir[userID] = time.Now()
+}
+
+// konteksJadwal: seluruh data yang dikirim ke service AI.
+type konteksJadwal struct {
+	User       migrations.User
+	Tanggal    time.Time
+	Tasks      []migrations.Task
+	Pref       migrations.UserPreference
+	Schedules  []migrations.Schedule
+	Activities []migrations.Activity
+	Existing   []migrations.StudySession
+}
+
+// hasilRegenerasi: hasil satu kali penyusunan jadwal.
+type hasilRegenerasi struct {
+	Sessions     []migrations.StudySession
+	Meta         aiSchedulerMeta
+	TidakBerubah bool
+	TanpaTugas   bool
+}
+
+// GenerateSchedule: jalur MANUAL (tombol "Susun ulang"), dibatasi 1x per 10 menit.
 func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 	user := currentUser(konteks)
 	var input GenerateScheduleInput
@@ -76,127 +128,375 @@ func (ctrl *AIController) GenerateSchedule(konteks *gin.Context) {
 		targetDate = parsed
 	}
 
-	var tasks []migrations.Task
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).
-		Where("user_id = ? AND status <> ?", user.ID, migrations.StatusDone).
-		Order("priority_score DESC, deadline ASC").Find(&tasks).Error; err != nil {
-		response.ServerError(konteks, err)
-		return
-	}
-	if len(tasks) == 0 {
-		response.OK(konteks, "tidak ada tugas aktif untuk dijadwalkan", []migrations.StudySession{})
+	if sisa, boleh := bolehSusunUlangManual(user.ID); !boleh {
+		menit := int(sisa.Minutes()) + 1
+		konteks.Header("Retry-After", strconv.Itoa(int(sisa.Seconds())+1))
+		response.Fail(konteks, http.StatusTooManyRequests,
+			fmt.Sprintf("Jadwal kamu baru saja diperbarui. Coba lagi dalam %d menit, atau geser sendiri sesi yang mau diubah.", menit), nil)
 		return
 	}
 
-	var pref migrations.UserPreference
-	ctrl.DB.Where("user_id = ?", user.ID).First(&pref)
-	if pref.StartTime == "" {
-		pref.StartTime = "15:00"
-	}
-	if pref.EndTime == "" {
-		pref.EndTime = "21:00"
-	}
-	if pref.SessionDuration <= 0 {
-		pref.SessionDuration = 60
-	}
-
-	var schedules []migrations.Schedule
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).
-		Where("user_id = ?", user.ID).Find(&schedules).Error; err != nil {
-		response.ServerError(konteks, err)
-		return
-	}
-
-	var activities []migrations.Activity
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).
-		Where("user_id = ?", user.ID).Find(&activities).Error; err != nil {
-		response.ServerError(konteks, err)
-		return
-	}
-
-	var existingSessions []migrations.StudySession
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).
-		Where("user_id = ? AND session_date >= ? AND status = ?",
-			user.ID, targetDate.Format("2006-01-02"), migrations.SessionPlanned).
-		Find(&existingSessions).Error; err != nil {
-		response.ServerError(konteks, err)
-		return
-	}
-
-	slots, err := ctrl.panggilAIScheduler(konteks, user.ID, targetDate, tasks, pref, schedules, activities, existingSessions)
+	hasil, err := ctrl.regenerasi(konteks.Request.Context(), user, targetDate)
 	if err != nil {
 		teruskanKegagalanAI(konteks, err)
 		return
 	}
+	catatSusunUlangManual(user.ID)
 
-	var sessions []migrations.StudySession
+	switch {
+	case hasil.TanpaTugas:
+		response.OK(konteks, "tidak ada tugas aktif untuk dijadwalkan", []migrations.StudySession{})
+	case hasil.TidakBerubah:
+		response.OK(konteks, "Jadwal kamu sudah paling pas — belum ada yang perlu disusun ulang.", hasil.Sessions)
+	default:
+		response.Created(konteks, "jadwal belajar disusun ulang", hasil.Sessions)
+	}
+}
+
+// RegenerasiOtomatis dijalankan planner (background) setiap ada perubahan konteks.
+// Gagal = diam: jadwal lama dibiarkan, cukup dicatat di log.
+func (ctrl *AIController) RegenerasiOtomatis(userID uint) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	var user migrations.User
+	if err := ctrl.DB.WithContext(ctx).First(&user, userID).Error; err != nil {
+		log.Printf("planner: user %d tidak ditemukan: %v", userID, err)
+		return
+	}
+
+	mulai := time.Now()
+	hasil, err := ctrl.regenerasi(ctx, user, time.Now())
+	if err != nil {
+		log.Printf("planner: regenerasi user %d gagal (jadwal lama dipertahankan): %v", userID, err)
+		return
+	}
+	if hasil.TanpaTugas {
+		return
+	}
+	log.Printf("planner: user=%d sesi=%d source=%s tidak_berubah=%t ms=%d",
+		userID, len(hasil.Sessions), hasil.Meta.Source, hasil.TidakBerubah, time.Since(mulai).Milliseconds())
+}
+
+// regenerasi: bangun konteks -> panggil AI -> susun sesi -> simpan (transaksi).
+func (ctrl *AIController) regenerasi(ctx context.Context, user migrations.User, tanggal time.Time) (hasilRegenerasi, error) {
+	k, err := ctrl.bangunKonteks(ctx, user, tanggal)
+	if err != nil {
+		return hasilRegenerasi{}, err
+	}
+	if len(k.Tasks) == 0 {
+		return hasilRegenerasi{TanpaTugas: true}, nil
+	}
+
+	slots, meta, err := ctrl.panggilAIScheduler(ctx, user.ID, tanggal, k)
+	if err != nil {
+		return hasilRegenerasi{}, err
+	}
+	if len(meta.Warnings) > 0 {
+		log.Printf("ai: engine mengirim %d peringatan: %s", len(meta.Warnings), strings.Join(meta.Warnings, " | "))
+	}
+
+	sessions := ctrl.susunSesi(k, slots, meta)
+	if len(sessions) == 0 {
+		return hasilRegenerasi{}, &aiResponseError{
+			StatusCode: http.StatusBadGateway,
+			Message:    "AI tidak memberikan slot yang bisa dipakai",
+		}
+	}
+
+	berubah, err := ctrl.simpanRegenerasi(ctx, k, sessions, meta)
+	if err != nil {
+		return hasilRegenerasi{}, err
+	}
+	return hasilRegenerasi{Sessions: sessions, Meta: meta, TidakBerubah: !berubah}, nil
+}
+
+// bangunKonteks membaca seluruh data yang dibutuhkan engine (read-only).
+func (ctrl *AIController) bangunKonteks(ctx context.Context, user migrations.User, tanggal time.Time) (konteksJadwal, error) {
+	db := ctrl.DB.WithContext(ctx)
+	k := konteksJadwal{User: user, Tanggal: tanggal}
+
+	if err := db.Preload("Subject").
+		Where("user_id = ? AND status <> ?", user.ID, migrations.StatusDone).
+		Order("priority_score DESC, deadline ASC").Find(&k.Tasks).Error; err != nil {
+		return k, err
+	}
+
+	if err := db.Where("user_id = ?", user.ID).First(&k.Pref).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return k, err
+	}
+	if k.Pref.StartTime == "" {
+		k.Pref.StartTime = "15:00"
+	}
+	if k.Pref.EndTime == "" {
+		k.Pref.EndTime = "21:00"
+	}
+	if k.Pref.SessionDuration <= 0 {
+		k.Pref.SessionDuration = 60
+	}
+
+	if err := db.Preload("Subject").Where("user_id = ?", user.ID).Find(&k.Schedules).Error; err != nil {
+		return k, err
+	}
+	if err := db.Where("user_id = ?", user.ID).Find(&k.Activities).Error; err != nil {
+		return k, err
+	}
+	if err := db.Where("user_id = ? AND session_date >= ? AND status = ?",
+		user.ID, tanggal.Format("2006-01-02"), migrations.SessionPlanned).Find(&k.Existing).Error; err != nil {
+		return k, err
+	}
+	return k, nil
+}
+
+// susunSesi mengubah slot dari AI menjadi baris StudySession.
+// Slot yang bertabrakan dengan sesi terkunci (pinned / < 24 jam) dibuang agar
+// jadwal milik user tidak tergeser walau engine belum mendukung `locked`.
+func (ctrl *AIController) susunSesi(k konteksJadwal, slots []slotRekomendasi, meta aiSchedulerMeta) []migrations.StudySession {
+	terkunci := ctrl.sesiTerkunci(k)
+
+	sessions := make([]migrations.StudySession, 0, len(slots))
 	for _, slot := range slots {
-		taskID := slot.TaskID
-		if _, ok := findOwnedTask(user.ID, taskID); !ok {
-			continue // AI mengembalikan task yang bukan milik user: abaikan
+		if _, ok := findOwnedTask(k.User.ID, slot.TaskID); !ok {
+			continue
+		}
+		start := hhmmMinutes(slot.StartTime)
+		if start < 0 {
+			continue
 		}
 		duration := slot.Duration
 		if duration <= 0 {
-			duration = pref.SessionDuration
+			duration = k.Pref.SessionDuration
 		}
-		startTime := slot.StartTime
-		if hhmmMinutes(startTime) < 0 {
-			continue
-		}
-		sessionDate := targetDate
+		tanggal := k.Tanggal
 		if slot.RecommendedDate != "" {
 			if parsed, err := time.Parse("2006-01-02", slot.RecommendedDate); err == nil {
-				sessionDate = parsed
+				tanggal = parsed
 			}
 		}
+		if bentrokDenganTerkunci(terkunci, tanggal.Format("2006-01-02"), start, duration) {
+			continue
+		}
+
 		sessions = append(sessions, migrations.StudySession{
-			UserID:         user.ID,
-			TaskID:         taskID,
-			SessionDate:    sessionDate,
-			StartTime:      startTime,
+			UserID:         k.User.ID,
+			TaskID:         slot.TaskID,
+			SessionDate:    tanggal,
+			StartTime:      slot.StartTime,
 			Duration:       duration,
 			TargetProgress: slot.TargetProgress,
 			Status:         migrations.SessionPlanned,
 			AIGenerated:    true,
 			Reason:         slot.Reason,
+			AISource:       meta.Source,
+			AIWarnings:     strings.Join(meta.Warnings, " | "),
 		})
 	}
+	return sessions
+}
 
-	if len(sessions) == 0 {
-		response.Fail(konteks, 502, "AI tidak memberikan slot yang bisa dipakai", nil)
+type sesiTerkunciInfo struct {
+	Tanggal string
+	Mulai   int
+	Selesai int
+}
+
+func (ctrl *AIController) sesiTerkunci(k konteksJadwal) []sesiTerkunciInfo {
+	var hasil []sesiTerkunciInfo
+	batas := time.Now().Add(24 * time.Hour)
+	for _, s := range k.Existing {
+		start := hhmmMinutes(s.StartTime)
+		if start < 0 || s.Duration <= 0 {
+			continue
+		}
+		terkunci := !s.AIGenerated || s.SessionDate.Before(batas)
+		if !terkunci {
+			continue
+		}
+		hasil = append(hasil, sesiTerkunciInfo{
+			Tanggal: s.SessionDate.Format("2006-01-02"),
+			Mulai:   start,
+			Selesai: start + s.Duration,
+		})
+	}
+	return hasil
+}
+
+func bentrokDenganTerkunci(terkunci []sesiTerkunciInfo, tanggal string, mulai, durasi int) bool {
+	selesai := mulai + durasi
+	for _, t := range terkunci {
+		if t.Tanggal != tanggal {
+			continue
+		}
+		if mulai < t.Selesai && selesai > t.Mulai {
+			return true
+		}
+	}
+	return false
+}
+
+// simpanRegenerasi menulis hasil ke DB dalam satu transaksi:
+// snapshot -> hapus sesi AI planned pada tanggal itu -> insert sesi baru.
+func (ctrl *AIController) simpanRegenerasi(ctx context.Context, k konteksJadwal, sessions []migrations.StudySession, meta aiSchedulerMeta) (bool, error) {
+	if sesiSama(k.Existing, sessions) {
+		return false, nil
+	}
+
+	versi := int(time.Now().Unix())
+	for i := range sessions {
+		sessions[i].PlanVersion = versi
+	}
+
+	err := ctrl.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. Snapshot jadwal saat ini untuk fitur "Urungkan".
+		if payload, err := json.Marshal(k.Existing); err == nil {
+			if err := tx.Create(&migrations.ScheduleSnapshot{
+				UserID:      k.User.ID,
+				SessionDate: k.Tanggal,
+				Payload:     string(payload),
+			}).Error; err != nil {
+				return err
+			}
+		}
+
+		// 2. Hapus hanya sesi AI planned pada tanggal target (rentang hari, aman untuk sqlite/PG).
+		awal, akhir := rentangHari(k.Tanggal)
+		if err := tx.Where("user_id = ? AND session_date >= ? AND session_date < ? AND status = ? AND ai_generated = ?",
+			k.User.ID, awal, akhir, migrations.SessionPlanned, true).
+			Delete(&migrations.StudySession{}).Error; err != nil {
+			return err
+		}
+
+		// 3. Simpan sesi baru.
+		return tx.Create(&sessions).Error
+	})
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// sesiSama: true kalau jadwal hasil AI identik dengan sesi AI yang sudah ada
+// (dipakai untuk pesan "sudah paling pas" tanpa menulis apa pun).
+func sesiSama(existing []migrations.StudySession, baru []migrations.StudySession) bool {
+	lama := make([]migrations.StudySession, 0, len(existing))
+	for _, s := range existing {
+		if s.AIGenerated {
+			lama = append(lama, s)
+		}
+	}
+	if len(lama) != len(baru) {
+		return false
+	}
+	kunci := func(s migrations.StudySession) string {
+		return fmt.Sprintf("%d|%s|%s|%d", s.TaskID, s.SessionDate.Format("2006-01-02"), s.StartTime, s.Duration)
+	}
+	set := make(map[string]int, len(lama))
+	for _, s := range lama {
+		set[kunci(s)]++
+	}
+	for _, s := range baru {
+		k := kunci(s)
+		if set[k] == 0 {
+			return false
+		}
+		set[k]--
+	}
+	return true
+}
+
+// rentangHari mengembalikan batas awal & akhir (eksklusif) satu hari kalender,
+// dipakai untuk query session_date yang bertipe timestamp.
+func rentangHari(tanggal time.Time) (time.Time, time.Time) {
+	awal := time.Date(tanggal.Year(), tanggal.Month(), tanggal.Day(), 0, 0, 0, 0, tanggal.Location())
+	return awal, awal.AddDate(0, 0, 1)
+}
+
+// UndoRegenerasi: kembalikan jadwal ke snapshot terakhir (tombol "Urungkan").
+func (ctrl *AIController) UndoRegenerasi(konteks *gin.Context) {
+	user := currentUser(konteks)
+
+	var snap migrations.ScheduleSnapshot
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).
+		Where("user_id = ?", user.ID).Order("created_at DESC").First(&snap).Error; err != nil {
+		response.NotFound(konteks, "tidak ada jadwal sebelumnya yang bisa dikembalikan")
 		return
 	}
 
-	// Bersihkan sesi AI planned lama pada user dan tanggal target agar tidak menumpuk duplikasi
-	_ = ctrl.DB.WithContext(konteks.Request.Context()).
-		Where("user_id = ? AND session_date = ? AND status = ? AND ai_generated = ?",
-			user.ID, targetDate.Format("2006-01-02"), migrations.SessionPlanned, true).
-		Delete(&migrations.StudySession{}).Error
-
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&sessions).Error; err != nil {
+	var sesiLama []migrations.StudySession
+	if err := json.Unmarshal([]byte(snap.Payload), &sesiLama); err != nil {
 		response.ServerError(konteks, err)
 		return
 	}
 
-	response.Created(konteks, "rekomendasi sesi belajar dibuat", sessions)
+	var dipulihkan []migrations.StudySession
+	err := ctrl.DB.WithContext(konteks.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		awal, akhir := rentangHari(snap.SessionDate)
+		if err := tx.Where("user_id = ? AND session_date >= ? AND session_date < ? AND status = ? AND ai_generated = ?",
+			user.ID, awal, akhir, migrations.SessionPlanned, true).
+			Delete(&migrations.StudySession{}).Error; err != nil {
+			return err
+		}
+		for _, s := range sesiLama {
+			dipulihkan = append(dipulihkan, migrations.StudySession{
+				UserID:         user.ID,
+				TaskID:         s.TaskID,
+				SessionDate:    s.SessionDate,
+				StartTime:      s.StartTime,
+				Duration:       s.Duration,
+				TargetProgress: s.TargetProgress,
+				Status:         s.Status,
+				AIGenerated:    s.AIGenerated,
+				Reason:         s.Reason,
+				AISource:       s.AISource,
+				AIWarnings:     s.AIWarnings,
+			})
+		}
+		if len(dipulihkan) == 0 {
+			return nil
+		}
+		if err := tx.Create(&dipulihkan).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&snap).Error
+	})
+	if err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	response.OK(konteks, "jadwal dikembalikan ke versi sebelumnya", dipulihkan)
+}
+
+// aiSchedulerMeta: metadata balikan engine yang diteruskan ke klien, bukan diolah.
+type aiSchedulerMeta struct {
+	Source         string   `json:"source"`
+	Warnings       []string `json:"warnings"`
+	FallbackReason string   `json:"fallback_reason"`
+}
+
+// zonaWaktu: zona yang dikirim ke engine; ikut env TZ server (Dockerfile: Asia/Jakarta).
+func zonaWaktu() string {
+	if tz := strings.TrimSpace(os.Getenv("TZ")); tz != "" {
+		return tz
+	}
+	return "Asia/Jakarta"
+}
+
+// sesiKirim: sesi existing + penanda `locked` (milik user / terlalu dekat untuk digeser).
+type sesiKirim struct {
+	migrations.StudySession
+	Locked bool `json:"locked"`
 }
 
 // panggilAIScheduler memanggil AI Spec 1. Semua kegagalan dikembalikan sebagai error
 // agar controller bisa meneruskan status dari service AI; backend tidak punya fallback lokal.
-func (ctrl *AIController) panggilAIScheduler(
-	konteks *gin.Context,
-	userID uint,
-	date time.Time,
-	tasks []migrations.Task,
-	pref migrations.UserPreference,
-	schedules []migrations.Schedule,
-	activities []migrations.Activity,
-	existingSessions []migrations.StudySession,
-) ([]slotRekomendasi, error) {
+func (ctrl *AIController) panggilAIScheduler(ctx context.Context, userID uint, tanggal time.Time, k konteksJadwal) ([]slotRekomendasi, aiSchedulerMeta, error) {
 	url := os.Getenv("AI_SCHEDULER_URL")
 	if url == "" {
-		return nil, errors.New("AI_SCHEDULER_URL belum diset")
+		return nil, aiSchedulerMeta{}, errors.New("AI_SCHEDULER_URL belum diset")
 	}
+
+	pref := k.Pref
 	breakDuration := pref.BreakDuration
 	if breakDuration <= 0 {
 		breakDuration = 15
@@ -205,11 +505,38 @@ func (ctrl *AIController) panggilAIScheduler(
 	if maxSessions <= 0 {
 		maxSessions = 3
 	}
+
+	// Schedules dikirim dengan `title` (nama mapel) agar prompt engine lebih jelas.
+	jadwal := make([]gin.H, 0, len(k.Schedules))
+	for _, s := range k.Schedules {
+		title := ""
+		if s.Subject != nil {
+			title = s.Subject.Name
+		}
+		jadwal = append(jadwal, gin.H{
+			"day_of_week": s.DayOfWeek,
+			"start_time":  s.StartTime,
+			"end_time":    s.EndTime,
+			"title":       title,
+			"room":        s.Room,
+			"teacher":     s.Teacher,
+		})
+	}
+
+	batas := time.Now().Add(24 * time.Hour)
+	existing := make([]sesiKirim, 0, len(k.Existing))
+	for _, s := range k.Existing {
+		existing = append(existing, sesiKirim{
+			StudySession: s,
+			Locked:       !s.AIGenerated || s.SessionDate.Before(batas),
+		})
+	}
+
 	payload := gin.H{
 		"user_id":  userID,
-		"date":     date.Format("2006-01-02"),
+		"date":     tanggal.Format("2006-01-02"),
 		"now":      time.Now().Format(time.RFC3339),
-		"timezone": "Asia/Jakarta",
+		"timezone": zonaWaktu(),
 		"preferences": gin.H{
 			"start_time":           pref.StartTime,
 			"end_time":             pref.EndTime,
@@ -218,17 +545,18 @@ func (ctrl *AIController) panggilAIScheduler(
 			"max_sessions_per_day": maxSessions,
 			"active_days":          pref.ActiveDays,
 		},
-		"tasks":             tasks,
-		"schedules":         schedules,
-		"activities":        activities,
-		"existing_sessions": existingSessions,
+		"tasks":             k.Tasks,
+		"schedules":         jadwal,
+		"activities":        k.Activities,
+		"existing_sessions": existing,
 	}
 
 	var raw json.RawMessage
-	if err := postJSON(konteks.Request.Context(), url, payload, &raw); err != nil {
-		return nil, err
+	if err := postJSON(ctx, url, payload, &raw); err != nil {
+		return nil, aiSchedulerMeta{}, err
 	}
-	return parseSchedulerResponse(raw), nil
+	slots, meta := parseSchedulerResponse(raw)
+	return slots, meta, nil
 }
 
 // aiSlotRaw adalah bentuk mentah slot dari service AI. Service AI boleh memakai
@@ -247,14 +575,22 @@ type aiSlotRaw struct {
 	Reason          string `json:"reason"`
 }
 
-// parseSchedulerResponse menerima `{"sessions":[...]}`, `{"data":[...]}`, atau array polos.
-func parseSchedulerResponse(raw json.RawMessage) []slotRekomendasi {
+// parseSchedulerResponse menerima `{"sessions":[...]}`, `{"data":[...]}`, atau array polos,
+// sekaligus mengembalikan metadata engine (`source`, `warnings`, `fallback_reason`).
+func parseSchedulerResponse(raw json.RawMessage) ([]slotRekomendasi, aiSchedulerMeta) {
 	var wrapper struct {
-		Sessions []aiSlotRaw `json:"sessions"`
-		Data     []aiSlotRaw `json:"data"`
+		Sessions       []aiSlotRaw `json:"sessions"`
+		Data           []aiSlotRaw `json:"data"`
+		Source         string      `json:"source"`
+		Warnings       []string    `json:"warnings"`
+		FallbackReason string      `json:"fallback_reason"`
 	}
+	meta := aiSchedulerMeta{}
 	var candidates [][]aiSlotRaw
 	if err := json.Unmarshal(raw, &wrapper); err == nil {
+		meta.Source = wrapper.Source
+		meta.Warnings = wrapper.Warnings
+		meta.FallbackReason = wrapper.FallbackReason
 		if len(wrapper.Sessions) > 0 {
 			candidates = append(candidates, wrapper.Sessions)
 		}
@@ -267,7 +603,7 @@ func parseSchedulerResponse(raw json.RawMessage) []slotRekomendasi {
 		candidates = append(candidates, bare)
 	}
 	if len(candidates) == 0 {
-		return nil
+		return nil, meta
 	}
 
 	rawSlots := candidates[0]
@@ -294,7 +630,7 @@ func parseSchedulerResponse(raw json.RawMessage) []slotRekomendasi {
 			Reason:          r.Reason,
 		})
 	}
-	return slots
+	return slots, meta
 }
 
 // AcceptRecommendation: sesi AI disetujui, tetap di kalender.
@@ -445,6 +781,8 @@ func (ctrl *AIController) GeneratePrediction(konteks *gin.Context) {
 		Reason:            prediction.Reason,
 		Prerequisites:     prediction.Prerequisites,
 		Preparation:       prediction.Preparation,
+		AISource:          prediction.Source,
+		SyllabusReference: prediction.SyllabusReference,
 	}
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&record).Error; err != nil {
 		response.ServerError(konteks, err)
@@ -460,6 +798,9 @@ type hasilPrediksi struct {
 	Reason            string  `json:"reason"`
 	Prerequisites     string  `json:"prerequisites"`
 	Preparation       string  `json:"preparation_suggestion"`
+	// Metadata dari engine (diteruskan apa adanya).
+	Source            string `json:"source,omitempty"`
+	SyllabusReference string `json:"syllabus_reference,omitempty"`
 }
 
 // panggilAIPredictor memanggil AI Spec 2. Kegagalan dikembalikan sebagai error
@@ -470,12 +811,12 @@ func (ctrl *AIController) panggilAIPredictor(konteks *gin.Context, user migratio
 		return hasilPrediksi{}, errors.New("AI_PREDICTOR_URL belum diset")
 	}
 	payload := gin.H{
-		"subject_id": subject.ID,
-		"subject":    subject.Name,
-		"difficulty": subject.Difficulty,
-		"grade":      user.Grade,
-		"major":      user.Major,
-		"history":    history,
+		"subject_id":  subject.ID,
+		"subject":     subject.Name,
+		"difficulty":  subject.Difficulty,
+		"class_level": kelasRomawi(user.Grade),
+		"curriculum":  kurikulumAI(),
+		"history":     history,
 	}
 
 	var raw json.RawMessage
@@ -505,6 +846,8 @@ type aiPrediksiRaw struct {
 	Preparation         string          `json:"preparation_suggestion"`
 	KeyConcepts         []string        `json:"key_concepts"`
 	SuggestedActivities []string        `json:"suggested_activities"`
+	Source              string          `json:"source"`
+	SyllabusReference   string          `json:"syllabus_reference"`
 	Data                *aiPrediksiRaw  `json:"data"`
 }
 
@@ -549,7 +892,39 @@ func parsePredictorResponse(raw json.RawMessage) (hasilPrediksi, bool) {
 		Reason:            reason,
 		Prerequisites:     joinPrerequisites(parsed.Prerequisites),
 		Preparation:       preparation,
+		Source:            parsed.Source,
+		SyllabusReference: parsed.SyllabusReference,
 	}, true
+}
+
+// kelasRomawi memetakan tingkat kelas (7..13) ke jenjang yang dipakai engine silabus.
+func kelasRomawi(grade int8) string {
+	switch grade {
+	case 7:
+		return "VII"
+	case 8:
+		return "VIII"
+	case 9:
+		return "IX"
+	case 10:
+		return "X"
+	case 11:
+		return "XI"
+	case 12:
+		return "XII"
+	case 13:
+		return "XIII"
+	default:
+		return ""
+	}
+}
+
+// kurikulumAI: acuan kurikulum yang dikirim ke engine (bisa diubah lewat env).
+func kurikulumAI() string {
+	if k := strings.TrimSpace(os.Getenv("AI_CURRICULUM")); k != "" {
+		return k
+	}
+	return "Kurikulum Merdeka"
 }
 
 // joinPrerequisites menerima `["a","b"]` maupun `"a, b"`.
@@ -615,7 +990,52 @@ func (ctrl *AIController) SubmitFeedback(konteks *gin.Context) {
 
 	var prediction migrations.MaterialPrediction
 	ctrl.DB.WithContext(konteks.Request.Context()).First(&prediction, id)
+
+	// Best-effort: teruskan ke engine agar bisa dipakai memperbaiki prompt berikutnya.
+	teruskanFeedbackAI(prediction)
+
 	response.OK(konteks, "umpan balik disimpan", prediction)
+}
+
+// teruskanFeedbackAI mengirim umpan balik user ke service AI (tidak pernah menggagalkan request).
+func teruskanFeedbackAI(prediction migrations.MaterialPrediction) {
+	url := aiFeedbackURL()
+	if url == "" {
+		return
+	}
+	payload := gin.H{
+		"data_feedback": []gin.H{{
+			"prediction_id":   prediction.ID,
+			"subject_id":      prediction.SubjectID,
+			"predicted_topic": prediction.PredictedMaterial,
+			"confidence":      prediction.Confidence,
+			"reason":          prediction.Reason,
+			"feedback":        prediction.UserFeedback,
+		}},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	var out json.RawMessage
+	if err := postJSON(ctx, url, payload, &out); err != nil {
+		log.Printf("ai: gagal meneruskan feedback prediksi %d: %v", prediction.ID, err)
+	}
+}
+
+// aiFeedbackURL menurunkan endpoint /feedback dari AI_PREDICTOR_URL (…/predict -> …/feedback).
+func aiFeedbackURL() string {
+	raw := strings.TrimSpace(os.Getenv("AI_PREDICTOR_URL"))
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/predict") + "/feedback"
+	u.RawQuery = ""
+	return u.String()
 }
 
 // aiResponseError: kegagalan yang datang dari service AI dan membawa status HTTP.

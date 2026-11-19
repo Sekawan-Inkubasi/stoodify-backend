@@ -22,6 +22,8 @@ type ActivityInput struct {
 	StartTime  string `json:"start_time" binding:"required,len=5"`
 	EndTime    string `json:"end_time" binding:"required,len=5"`
 	Recurrence string `json:"recurrence" binding:"omitempty,oneof=daily weekly monthly none"`
+	// DayOfWeek opsional (Monday..Sunday / Senin..Minggu / 1..7); wajib untuk weekly.
+	DayOfWeek string `json:"day_of_week" binding:"omitempty"`
 }
 
 func (ctrl *ActivityController) GetAll(konteks *gin.Context) {
@@ -69,6 +71,7 @@ func (ctrl *ActivityController) Create(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.Created(konteks, "aktivitas dibuat", activity)
 }
 
@@ -111,6 +114,7 @@ func (ctrl *ActivityController) Update(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "aktivitas diperbarui", activity)
 }
 
@@ -131,5 +135,6 @@ func (ctrl *ActivityController) Delete(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.NoContent(konteks)
 }

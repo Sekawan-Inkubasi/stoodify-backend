@@ -77,6 +77,7 @@ func (ctrl *SubjectController) Create(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.Created(konteks, "mata pelajaran dibuat", subject)
 }
 
@@ -128,6 +129,7 @@ func (ctrl *SubjectController) Update(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.OK(konteks, "mata pelajaran diperbarui", subject)
 }
 
@@ -148,6 +150,7 @@ func (ctrl *SubjectController) Delete(konteks *gin.Context) {
 		response.ServerError(konteks, err)
 		return
 	}
+	picuRegenerasi(user.ID)
 	response.NoContent(konteks)
 }
 
