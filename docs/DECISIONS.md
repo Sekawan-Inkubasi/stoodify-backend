@@ -43,3 +43,23 @@ Catatan pertimbangan dan keputusan desain arsitektural teknis Stoodify Backend.
 - **Status:** Diterima & Diimplementasikan
 - **Konteks:** Fungsi `response.ServerError` sebelumnya meneruskan string `err.Error()` mentah ke klien, berisiko membocorkan nama tabel atau credential SQL.
 - **Keputusan:** Mengubah helper `ServerError` agar mengembalikan pesan umum yang aman, sementara error asli hanya dicatat ke logger internal.
+
+---
+
+## ADR-006: Pembersihan Sesi Planned Usang & Filter Status Sesi Rekomendasi
+- **Status:** Diterima & Diimplementasikan (19 November 2026)
+- **Konteks:** Setiap kali user memicu `POST /api/ai/schedule-recommendations/generate`, sesi rekomendasi baru dimasukkan ke database tanpa menghapus sesi `planned` yang telah dihasilkan sebelumnya. Akibatnya, pada tampilan kalender mobile terjadi akumulasi duplikat (hingga 8 sesi identik).
+- **Keputusan:**
+  1. Pada `controllers/ai_controllers.go:GenerateSchedule`, sebelum memasukkan sesi rekomendasi baru dari AI, hapus secara atomik sesi-sesi berstatus `planned` milik user (`Where("user_id = ? AND status = ?", userID, migrations.SessionPlanned).Delete(...)`).
+  2. Pada query `GetScheduleRecommendations`, tambahkan filter `status != ?` untuk mengecualikan sesi dengan status `migrations.SessionSkipped`.
+- **Konsekuensi:** Tampilan kalender mobile selalu bersih, mutakhir, dan bebas dari duplikasi sesi planned lama.
+
+---
+
+## ADR-007: Konfigurasi Fleksibel Masa Berlaku Token JWT via Environment Variable
+- **Status:** Diterima & Diimplementasikan (19 November 2026)
+- **Konteks:** Sebelumnya konstanta `AccessTTL` (15 menit) dan `RefreshTTL` (7 hari) di-hardcode di package `internal/token`. Pengujian mobile dan staging membutuhkan fleksibilitas penyesuaian masa aktif token tanpa perlu mengubah kode sumber atau mengompilasi ulang binary.
+- **Keputusan:**
+  1. Mengubah konstanta `AccessTTL` dan `RefreshTTL` menjadi variabel package yang diinisialisasi melalui fungsi `init()`.
+  2. Membaca `JWT_ACCESS_TTL` dan `JWT_REFRESH_TTL` dari environment variable (format `time.ParseDuration`, misal `30m`, `1h`, `168h`), dengan fallback aman ke nilai standar 15 menit dan 7 hari.
+- **Konsekuensi:** Operator dan developer dapat menyesuaikan masa aktif sesi secara dinamis pada environment development maupun production.

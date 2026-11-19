@@ -97,3 +97,18 @@ Dokumen ini merupakan daftar kerja terpadu (*single source of truth*) yang mengo
 - [x] **21. Wiring Microservice AI-1**
   - *Backend & AI-1:* Sinkronisasi API Key dan endpoint `AI_SCHEDULER_URL=http://127.0.0.1:8000/schedule` pada `.env`, plus verifikasi flow generate rekomendasi jadwal & prediksi materi (`docs/AI_CONTRACT.md`).
   - *Catatan:* `POST /api/ai/reschedule` masih lokal dan belum memanggil AI.
+
+---
+
+## 🛡️ TAHAP 6: Penguatan AI Bridge, Sesi Kalender & Ketahanan Token (Pembaruan 19 November 2026)
+*Penyelarasan stabilitas rilis pameran & audit penyesuaian fitur mobile APK:*
+
+- [x] **22. Penegakan Pure AI Bridge (ADR-005) & Verifikasi Prediksi Materi**
+  - *Status:* **Selesai.** Penghapusan total seluruh fallback rule-based lokal di Go backend. Prediksi silabus/materi 100% dijalankan oleh microservice Python AI (`stoodify-ai-2/prediksi.py`) menggunakan Google Gemini LLM (`gemini-2.5-flash`).
+- [x] **23. Pembersihan Sesi Planned & Filter Status Sesi Kalender (ADR-006)**
+  - *Status:* **Selesai.** Pada `controllers/ai_controllers.go:GenerateSchedule`, sesi berstatus `planned` lama dibersihkan secara atomik sebelum rekomendasi baru disimpan, mencegah akumulasi duplikat sesi di kalender. Sesi berstatus `skipped` difilter keluar dari `GetScheduleRecommendations`.
+- [x] **24. Fleksibilitas TTL Token & Ketahanan Sesi Mobile (ADR-007)**
+  - *Backend:* Penambahan dukungan pembacaan environment variable `JWT_ACCESS_TTL` dan `JWT_REFRESH_TTL` di `internal/token/token.go` dengan fallback default aman 15 menit dan 7 hari.
+  - *Mobile:* Penulisan token terjamin persisten ke `SecureStore` (`await setTokensAsync`), penyegaran proaktif jika token tersisa < 90 detik, dan sinkronisasi `AppState` saat aplikasi kembali dari background.
+- [x] **25. Stoodify Design System Dialogs & ChatDrawer Polishing**
+  - *Mobile:* Migrasi 100% dialog OS `Alert.alert` ke `CustomAlertDialog` (`radii.card = 16`, Poppins font, tinted badge icon, dark backdrop overlay). Layout header ChatDrawer diperbaiki bebas tumpang tindih, backdrop gelap `rgba(15, 23, 42, 0.65)`, dan `KeyboardAvoidingView` responsif terhadap virtual keyboard Android. File `ChatDrawer.js` dipangkas dari 554 menjadi 273 baris (mematuhi batas <= 300 baris AGENTS.md).

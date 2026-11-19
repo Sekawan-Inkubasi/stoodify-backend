@@ -72,6 +72,7 @@ Alias field yang diterima per slot:
 | `task_title` | — | diterima tapi diabaikan (judul diambil dari DB) |
 
 Aturan penanganan:
+- **Pembersihan Sesi Planned Lama:** Sebelum memasukkan sesi rekomendasi baru, backend secara otomatis menghapus sesi-sesi berstatus `planned` lama milik user (`status = 'planned'`) agar tidak terjadi penumpukan/duplikasi slot belajar usang di kalender (ADR-006).
 - Tidak ada slot valid (bukan milik user / jam rusak) → `502 "AI tidak memberikan slot yang bisa dipakai"`, tidak ada sesi dibuat.
 - Sesi yang dibuat ditandai `ai_generated = true`, status `planned`.
 - `message` respons tidak lagi menyebut sumber (dulu ada sufiks `(ai)` / `(fallback rule-based)`); backend tidak punya jalur rekomendasi lokal.
