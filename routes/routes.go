@@ -281,6 +281,9 @@ func SetupRoutes() *gin.Engine {
 				ai.POST("/material-predictions/generate", aiCtrl.GeneratePrediction)
 				ai.GET("/material-predictions/:subjectId", aiCtrl.GetPrediction)
 				ai.POST("/material-predictions/:id/feedback", aiCtrl.SubmitFeedback)
+
+				// Conversational Chatbot Assistant
+				ai.POST("/chat", aiCtrl.Chat)
 			}
 
 			// --- NOTIFICATIONS ---

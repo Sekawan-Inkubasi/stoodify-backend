@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"math"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -103,7 +104,7 @@ func (ctrl *StatisticsController) GetOverview(konteks *gin.Context) {
 
 	finished := stats.DoneTasks + stats.LateTasks
 	if finished > 0 {
-		stats.OnTimeRate = float64(stats.DoneTasks) / float64(finished) * 100
+		stats.OnTimeRate = math.Round((float64(stats.DoneTasks) / float64(finished)) * 100)
 	}
 
 	stats.StreakDays = ctrl.calculateStreak(konteks, user.ID)

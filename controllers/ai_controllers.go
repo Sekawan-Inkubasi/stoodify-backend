@@ -1147,6 +1147,84 @@ func postJSON(ctx context.Context, url string, payload interface{}, out interfac
 	return json.NewDecoder(res.Body).Decode(out)
 }
 
+type chatRequest struct {
+	Message string                   `json:"message" binding:"required"`
+	History []map[string]interface{} `json:"history"`
+	Context map[string]interface{}   `json:"context"`
+}
+
+type chatResponse struct {
+	Reply     string `json:"reply"`
+	Action    string `json:"action,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Source    string `json:"source,omitempty"`
+	LatencyMs int64  `json:"latency_ms,omitempty"`
+}
+
+func (ctrl *AIController) Chat(konteks *gin.Context) {
+	user := currentUser(konteks)
+	var input chatRequest
+	if err := konteks.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(konteks, "pesan chat tidak valid", map[string]string{"error": err.Error()})
+		return
+	}
+
+	url := os.Getenv("AI_CHAT_URL")
+	if url == "" {
+		url = "http://127.0.0.1:8000/chat"
+	}
+
+	if input.History == nil {
+		input.History = make([]map[string]interface{}, 0)
+	}
+
+	if input.Context == nil {
+		input.Context = make(map[string]interface{})
+	}
+	if _, ok := input.Context["student_name"]; !ok {
+		input.Context["student_name"] = user.Name
+	}
+	if _, ok := input.Context["grade"]; !ok {
+		input.Context["grade"] = user.Grade
+	}
+	if _, ok := input.Context["school"]; !ok {
+		input.Context["school"] = user.School
+	}
+
+	if _, ok := input.Context["active_tasks"]; !ok {
+		var activeTasks []migrations.Task
+		ctrl.DB.WithContext(konteks.Request.Context()).
+			Where("user_id = ? AND status != ?", user.ID, migrations.StatusDone).
+			Order("priority_score DESC, deadline ASC").
+			Limit(5).
+			Find(&activeTasks)
+
+		taskList := make([]map[string]interface{}, 0, len(activeTasks))
+		for _, t := range activeTasks {
+			taskList = append(taskList, map[string]interface{}{
+				"id":       t.ID,
+				"title":    t.Title,
+				"deadline": t.Deadline.Format("2006-01-02 15:04"),
+			})
+		}
+		input.Context["active_tasks"] = taskList
+	}
+
+	var raw json.RawMessage
+	if err := postJSON(konteks.Request.Context(), url, input, &raw); err != nil {
+		teruskanKegagalanAI(konteks, err)
+		return
+	}
+
+	var res chatResponse
+	if err := json.Unmarshal(raw, &res); err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	response.OK(konteks, "jawaban asisten ai", res)
+}
+
 func minutesToHHMM(minutes int) string {
 	return fmt.Sprintf("%02d:%02d", minutes/60, minutes%60)
 }
