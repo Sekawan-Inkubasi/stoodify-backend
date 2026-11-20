@@ -122,11 +122,41 @@ jobs:
             PREV_SHA="$(git rev-parse HEAD)"
             echo "Commit aktif sebelum deploy: $PREV_SHA"
 
+            # --- Preflight 3: port host harus bebas ---
+            # Kalau ada proses/container lain yang memegang PORT, `docker compose up`
+            # akan menghancurkan container lama lalu gagal start -> produksi mati
+            # tanpa rollback (set -euo pipefail menghentikan skrip lebih dulu).
+            HOST_PORT="$(grep -E '^[[:space:]]*PORT=' .env | tail -1 | cut -d= -f2 | tr -d '[:space:]')"
+            HOST_PORT="${HOST_PORT:-8080}"
+            if docker ps --format '{{.Names}} {{.Ports}}' | grep -q "0.0.0.0:${HOST_PORT}->"; then
+              PEMEGANG="$(docker ps --format '{{.Names}} {{.Ports}}' | grep "0.0.0.0:${HOST_PORT}->")"
+              if ! echo "$PEMEGANG" | grep -q '^stoodify-backend '; then
+                echo "ABORT: port ${HOST_PORT} dipakai container lain:"
+                echo "  $PEMEGANG"
+                echo "Deploy dibatalkan sebelum menyentuh container yang sedang jalan."
+                exit 1
+              fi
+            fi
+
             git fetch origin main
             git reset --hard origin/main
             echo "Commit setelah update: $(git rev-parse HEAD)"
 
-            docker compose up -d --build app
+            # --- Deploy dengan rollback otomatis untuk SEMUA kegagalan ---
+            # Sebelumnya rollback hanya jalan saat health check gagal. Padahal
+            # `docker compose up` sudah menghancurkan container lama: kalau langkah
+            # itu sendiri gagal (port bentrok, image rusak), produksi tertinggal mati.
+            rollback() {
+              echo "Deploy gagal. Rollback ke commit $PREV_SHA"
+              git reset --hard "$PREV_SHA" || true
+              docker compose up -d --build app || echo "PERINGATAN: rollback juga gagal, perlu tindakan manual di server."
+              echo "Rollback selesai. Deploy ditandai gagal."
+            }
+
+            if ! docker compose up -d --build app; then
+              rollback
+              exit 1
+            fi
 
             # --- Health check: container crash-loop (mis. config salah) tidak lolos ---
             HEALTHY=0
@@ -141,10 +171,7 @@ jobs:
             if [ "$HEALTHY" != "1" ]; then
               echo "Health check GAGAL setelah deploy. Menampilkan log terakhir:"
               docker compose logs --tail 60 app || true
-              echo "Rollback ke commit $PREV_SHA"
-              git reset --hard "$PREV_SHA"
-              docker compose up -d --build app
-              echo "Rollback selesai. Deploy ditandai gagal."
+              rollback
               exit 1
             fi
 
