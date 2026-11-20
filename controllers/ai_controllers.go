@@ -695,6 +695,7 @@ func (ctrl *AIController) Reschedule(konteks *gin.Context) {
 
 	var pending []migrations.StudySession
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).
+		Preload("Task").Preload("Task.Subject").
 		Where("user_id = ? AND status = ?", user.ID, migrations.SessionPlanned).
 		Find(&pending).Error; err != nil {
 		response.ServerError(konteks, err)

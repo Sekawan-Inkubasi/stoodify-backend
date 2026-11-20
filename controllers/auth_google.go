@@ -35,13 +35,17 @@ func (ctrl *AuthController) LoginGoogle(konteks *gin.Context) {
 		response.ValidationError(konteks, err)
 		return
 	}
+	ctrl.ProsesLoginGoogle(konteks, input.IDToken)
+}
 
+// ProsesLoginGoogle memverifikasi ID token Google dan menerbitkan token aplikasi.
+func (ctrl *AuthController) ProsesLoginGoogle(konteks *gin.Context, idToken string) {
 	verifier := ctrl.Google
 	if verifier == nil {
 		verifier = googleauth.NewVerifier(os.Getenv("GOOGLE_CLIENT_ID"))
 	}
 
-	klaim, err := verifier.Verify(konteks.Request.Context(), input.IDToken)
+	klaim, err := verifier.Verify(konteks.Request.Context(), idToken)
 	if err != nil {
 		if errors.Is(err, googleauth.ErrClientIDKosong) {
 			response.Fail(konteks, 503, "login Google belum dikonfigurasi di server", nil)

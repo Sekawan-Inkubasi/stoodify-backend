@@ -280,3 +280,43 @@ func TestGoogleSubUnikTapiBolehNullBanyak(t *testing.T) {
 	d := migrations.User{Name: "D", Email: "d@example.com", PasswordHash: "x", TokenVersion: 1, GoogleSub: &sub}
 	assert.Error(t, db.Create(&d).Error, "google_sub yang sama harus ditolak index unik")
 }
+
+func TestLoginEndpointMenerimaGoogleIDToken(t *testing.T) {
+	db := setupAITestDB(t)
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	auth := NewAuthController(db)
+	auth.Google = &googleauth.Verifier{
+		ClientID: clientIDUji,
+		Keys:     keyUji{key: key},
+		Now:      time.Now,
+	}
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/auth/login", auth.Login)
+
+	idToken := tokenGoogle(t, key, klaimGoogle{
+		Sub:   "sub-login-polymorphic",
+		Email: "poly@example.com",
+		Name:  "Poly User",
+	})
+
+	body, _ := json.Marshal(map[string]string{"id_token": idToken})
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
+	assert.NotEmpty(t, payload["data"].(map[string]any)["access_token"])
+
+	var saved migrations.User
+	require.NoError(t, db.Where("google_sub = ?", "sub-login-polymorphic").First(&saved).Error)
+	assert.Equal(t, "poly@example.com", saved.Email)
+}

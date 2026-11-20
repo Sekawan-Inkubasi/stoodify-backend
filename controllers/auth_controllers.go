@@ -52,8 +52,9 @@ type RegisterInput struct {
 }
 
 type LoginInput struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	IDToken  string `json:"id_token"`
 }
 
 type RefreshInput struct {
@@ -154,6 +155,19 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 
 	if err := konteks.ShouldBindJSON(&input); err != nil {
 		response.ValidationError(konteks, err)
+		return
+	}
+
+	if strings.TrimSpace(input.IDToken) != "" {
+		ctrl.ProsesLoginGoogle(konteks, strings.TrimSpace(input.IDToken))
+		return
+	}
+
+	if strings.TrimSpace(input.Email) == "" || strings.TrimSpace(input.Password) == "" {
+		response.Fail(konteks, http.StatusUnprocessableEntity, "email dan password wajib diisi", map[string]string{
+			"email":    "email wajib diisi jika tidak menggunakan id_token",
+			"password": "password wajib diisi jika tidak menggunakan id_token",
+		})
 		return
 	}
 
