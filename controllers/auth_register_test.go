@@ -8,21 +8,15 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
-	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"stoodify_backend/internal/response"
 	"stoodify_backend/migrations"
 )
 
 func routerRegister(t *testing.T) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
-		response.DaftarkanNamaFieldJSON(v)
-	}
 	r := gin.New()
 	auth := NewAuthController(configDB())
 	r.POST("/auth/register", auth.Register)
@@ -46,9 +40,9 @@ func TestRegisterMewajibkanSchoolGradeMajor(t *testing.T) {
 		Errors map[string]string `json:"errors"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "wajib diisi", resp.Errors["school"])
-	assert.Equal(t, "wajib diisi", resp.Errors["grade"])
-	assert.Equal(t, "wajib diisi", resp.Errors["major"])
+	assert.Equal(t, "wajib diisi", resp.Errors["school"], "body: %s", w.Body.String())
+	assert.Equal(t, "wajib diisi", resp.Errors["grade"], "body: %s", w.Body.String())
+	assert.Equal(t, "wajib diisi", resp.Errors["major"], "body: %s", w.Body.String())
 
 	// Tidak ada user yang tersimpan dari request gagal.
 	var jumlah int64

@@ -121,6 +121,8 @@ func (ctrl *AuthController) userDariGoogle(konteks *gin.Context, klaim googleaut
 		}
 		sub := klaim.Sub
 		user.GoogleSub = &sub
+		// Email dari Google sudah terverifikasi Google sendiri.
+		user.EmailVerified = true
 		ctrl.lengkapiDariGoogle(&user, klaim)
 		if err := ctrl.DB.WithContext(ctx).Save(&user).Error; err != nil {
 			return migrations.User{}, false, err
@@ -138,6 +140,7 @@ func (ctrl *AuthController) userDariGoogle(konteks *gin.Context, klaim googleaut
 		GoogleSub:        &klaim.Sub,
 		AuthProvider:     migrations.AuthProviderGoogle,
 		ProfileCompleted: false,
+		EmailVerified:    true,
 		AvatarURL:        klaim.Picture,
 		Role:             migrations.RoleStudent,
 		TokenVersion:     1,

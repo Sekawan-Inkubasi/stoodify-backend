@@ -63,3 +63,14 @@ lokal, jalankan `go run . serve` dengan `APP_ENV=development` (default).
 **Ini bukan bug backend.** Kontrak register mewajibkan `school`, `grade` (7–13), dan `major`; form daftar aplikasi harus menyediakan ketiganya. Jangan melonggarkan tag `binding` di `RegisterInput` supaya form lama lolos — frontend yang menyesuaikan ke backend, bukan sebaliknya.
 
 **Yang boleh diperbaiki di backend hanya pesan errornya** (lihat #5): pesan per field yang ramah + tidak membocorkan nama struct Go di production.
+
+## 7. Pendaftar Tidak Bisa Login: Email Verifikasi Tidak Terkirim
+
+**Gejala:** register 201, tapi login 403 `email_verified=false` dan email tidak pernah masuk.
+
+**Penyebab paling umum:** `SMTP_HOST` kosong di server, sehingga `mailer.NewMailer()` memakai `NoopMailer` (tidak mengirim apa pun, tanpa error, tanpa log).
+
+**Cek:** pastikan `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, dan `EMAIL_VERIFICATION_URL` terisi di `.env` server; lihat log `mailer: gagal mengirim ...` bila kredensial salah.
+
+**Catatan:** port 465 (implicit TLS) belum didukung — `net/smtp.SendMail` hanya STARTTLS (587/25).
+

@@ -45,6 +45,15 @@ POST /auth/register
 
 Semua field **wajib**: `name`, `email`, `school`, `grade` (7–13), `major`, `password`, `confirm_password`. Backend adalah acuan kontrak — form daftar di aplikasi wajib menyediakan `school`, `grade`, dan `major`.
 
+**Akun baru belum aktif.** Backend mengirim link verifikasi ke email (berlaku 24 jam). Sebelum diklik, `POST /auth/login` membalas **403**:
+
+```json
+{ "success": false, "message": "Email belum diverifikasi. Cek inbox atau minta kirim ulang verifikasi.",
+  "errors": { "email_verified": "false" } }
+```
+
+Aplikasi menampilkan layar "Cek email kamu" + tombol **Kirim ulang**. Registrasi tetap **201** (data = objek user dengan `email_verified: false`), tanpa token.
+
 Sukses → **201**:
 
 ```json
@@ -238,6 +247,26 @@ Selama `profile_completed=false`, endpoint berikut membalas **409**:
 ```
 
 Endpoint lain (profil, mapel, jadwal, tugas, sesi belajar, notifikasi) tetap bisa dipakai. Penjadwalan otomatis di latar belakang juga **melewati** akun yang belum lengkap.
+
+---
+
+### 1.9 Verifikasi Email
+
+```
+POST /auth/verify-email
+{ "token": "<token dari link email>" }
+```
+
+Sukses → **200** `{ "email_verified": true }`. Token **sekali pakai**, berlaku **24 jam**; kalau sudah dipakai/kedaluwarsa → **400** dengan pesan yang membedakan keduanya.
+
+```
+POST /auth/verify-email/resend
+{ "email": "siswa@example.com" }
+```
+
+Selalu **200** dengan pesan generik (tidak membocorkan apakah email terdaftar). Kalau email terdaftar dan belum terverifikasi, link baru dikirim dan **token lama dibatalkan**.
+
+Akun Google tidak perlu verifikasi (email sudah diverifikasi Google).
 
 ---
 

@@ -109,6 +109,10 @@ components:
           type: boolean
           description: false = akun Google yang belum mengisi sekolah/kelas/jurusan
           example: true
+        email_verified:
+          type: boolean
+          description: false = pendaftar password yang belum klik link verifikasi (login ditolak 403)
+          example: true
         created_at:
           type: string
           format: date-time
@@ -490,6 +494,50 @@ paths:
           description: Body request tidak valid
         '401':
           description: Email atau password salah
+        '403':
+          description: Email belum diverifikasi (errors.email_verified = "false")
+  /auth/verify-email:
+    post:
+      tags:
+      - Auth
+      summary: Verifikasi email dari link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Email terverifikasi, login sudah bisa dilakukan
+        '400':
+          description: Token tidak valid, sudah dipakai, atau kedaluwarsa
+  /auth/verify-email/resend:
+    post:
+      tags:
+      - Auth
+      summary: Kirim ulang link verifikasi
+      description: Selalu 200 dengan pesan generik; token lama dibatalkan bila email valid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Pesan generik (tidak membocorkan status email)
   /auth/google:
     post:
       tags:

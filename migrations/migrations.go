@@ -72,9 +72,12 @@ type User struct {
 	// AuthProvider: "password" (default) atau "google" (tanpa password).
 	AuthProvider string `gorm:"column:auth_provider;type:varchar(20);not null;default:password" json:"auth_provider"`
 	// ProfileCompleted: false untuk akun Google yang belum mengisi sekolah/kelas/jurusan.
-	ProfileCompleted bool            `gorm:"column:profile_completed;not null;default:true" json:"profile_completed"`
-	TokenVersion     int             `gorm:"default:1;not null" json:"-"`
-	Preferences      *UserPreference `gorm:"foreignKey:UserID" json:"preferences,omitempty"`
+	ProfileCompleted bool `gorm:"column:profile_completed;not null;default:true" json:"profile_completed"`
+	// EmailVerified: false untuk pendaftar password yang belum klik link verifikasi.
+	// Default true supaya akun lama (dan akun buatan seeder) tidak ikut terkunci.
+	EmailVerified bool            `gorm:"column:email_verified;not null;default:true" json:"email_verified"`
+	TokenVersion  int             `gorm:"default:1;not null" json:"-"`
+	Preferences   *UserPreference `gorm:"foreignKey:UserID" json:"preferences,omitempty"`
 }
 
 type UserPreference struct {
@@ -217,6 +220,15 @@ type RefreshToken struct {
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 }
 
+type EmailVerificationToken struct {
+	Base
+	UserID    uint       `gorm:"index;not null" json:"user_id"`
+	User      User       `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	TokenHash string     `gorm:"uniqueIndex;not null" json:"-"`
+	ExpiresAt time.Time  `gorm:"index;not null" json:"expires_at"`
+	UsedAt    *time.Time `gorm:"index" json:"used_at,omitempty"`
+}
+
 type PasswordResetToken struct {
 	Base
 	UserID    uint       `gorm:"index;not null" json:"user_id"`
@@ -288,6 +300,7 @@ func AllModels() []interface{} {
 		&MaterialPrediction{},
 		&RefreshToken{},
 		&PasswordResetToken{},
+		&EmailVerificationToken{},
 		&CurriculumTopic{},
 		&UserTopicProgress{},
 		&ScheduleSnapshot{},

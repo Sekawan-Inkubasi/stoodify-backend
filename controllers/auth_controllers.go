@@ -2,6 +2,8 @@ package controllers
 
 import (
 	"errors"
+	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -126,9 +128,24 @@ func (ctrl *AuthController) Register(konteks *gin.Context) {
 		return
 	}
 
+	// Kolom email_verified punya DEFAULT true (akun lama & seeder tidak terkunci),
+	// sehingga nilai false harus diset eksplisit setelah INSERT.
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).Model(&migrations.User{}).
+		Where("id = ?", user.ID).Update("email_verified", false).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+	user.EmailVerified = false
+
+	if err := ctrl.buatDanKirimVerifikasi(konteks.Request.Context(), user); err != nil {
+		// Akun sudah terbuat; jangan gagalkan registrasi hanya karena email gagal
+		// disiapkan. User bisa memakai /auth/verify-email/resend.
+		log.Printf("registrasi: gagal menyiapkan verifikasi email untuk %s: %v", user.Email, err)
+	}
+
 	// Bentuk response register dipertahankan (data = objek user) agar klien lama
 	// tidak pecah; akun hasil register password selalu profile_completed=true.
-	response.Created(konteks, "registrasi berhasil, sekarang harap login", user)
+	response.Created(konteks, "registrasi berhasil, cek email untuk verifikasi akun sebelum login", user)
 }
 
 func (ctrl *AuthController) Login(konteks *gin.Context) {
@@ -157,6 +174,14 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 	// Akun yang dibuat lewat Google tidak punya password: arahkan ke tombol Google.
 	if user.AuthProvider == migrations.AuthProviderGoogle || user.PasswordHash == "" {
 		response.Unauthorized(konteks, "Akun ini terdaftar lewat Google. Silakan masuk dengan tombol Google.")
+		return
+	}
+
+	// Belum verifikasi email = belum dianggap punya akun.
+	if !user.EmailVerified {
+		response.Fail(konteks, http.StatusForbidden,
+			"Email belum diverifikasi. Cek inbox atau minta kirim ulang verifikasi.",
+			map[string]string{"email_verified": "false"})
 		return
 	}
 
@@ -234,6 +259,11 @@ func (ctrl *AuthController) Refresh(konteks *gin.Context) {
 			return errors.New("token_version_mismatch")
 		}
 
+		// Akun yang email-nya belum diverifikasi tidak boleh memperpanjang sesi.
+		if !user.EmailVerified {
+			return errors.New("email_belum_diverifikasi")
+		}
+
 		// 3. Terbitkan access & refresh token baru yang terikat token_version user
 		access, err := token.GenerateAccess(user.ID, userTokenVer)
 		if err != nil {
@@ -262,6 +292,12 @@ func (ctrl *AuthController) Refresh(konteks *gin.Context) {
 	if err != nil {
 		if err.Error() == "token_revoked_or_invalid" || err.Error() == "token_version_mismatch" {
 			response.Unauthorized(konteks, "refresh token sudah tidak berlaku")
+			return
+		}
+		if err.Error() == "email_belum_diverifikasi" {
+			response.Fail(konteks, http.StatusForbidden,
+				"Email belum diverifikasi. Cek inbox atau minta kirim ulang verifikasi.",
+				map[string]string{"email_verified": "false"})
 			return
 		}
 		response.ServerError(konteks, err)

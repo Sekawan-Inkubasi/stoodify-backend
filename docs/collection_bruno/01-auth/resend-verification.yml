@@ -1,0 +1,30 @@
+info:
+  name: Resend Verification
+  type: http
+  seq: 11
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/verify-email/resend"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "email": "siswa@example.com"
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Kirim ulang link verifikasi (balasan selalu generik)

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -23,6 +24,15 @@ func NoContent(c *gin.Context) {
 func Produksi() bool {
 	env := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
 	return env == "production" || env == "prod"
+}
+
+// init mendaftarkan nama field JSON pada validator global Gin sedini mungkin.
+// Kalau pendaftaran ditunda sampai router dibuat, validator sudah bisa terlanjur
+// meng-cache nama field Go (mis. "School") dan error ke client jadi tidak konsisten.
+func init() {
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		DaftarkanNamaFieldJSON(v)
+	}
 }
 
 // DaftarkanNamaFieldJSON membuat error validator memakai nama field JSON

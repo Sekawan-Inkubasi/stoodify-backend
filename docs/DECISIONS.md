@@ -91,3 +91,17 @@ Catatan pertimbangan dan keputusan desain arsitektural teknis Stoodify Backend.
   4. Akun baru dibuat dengan `profile_completed=false`; fitur AI/statistik diblok `409` lewat middleware sampai `PATCH /users/me/onboarding` diisi. Penjadwalan otomatis di latar belakang melewati akun ini.
   5. Login password untuk akun Google ditolak dengan pesan eksplisit; reset password tidak mengirim email untuk akun tersebut.
 - **Konsekuensi:** butuh kolom `google_sub`, `auth_provider`, `profile_completed` (data lama di-backfill `password`/`true`). Client ID Android/iOS dikelola aplikasi masing-masing; backend hanya menyimpan client ID web.
+
+---
+
+## ADR-010: Verifikasi Email Wajib Sebelum Login
+- **Status:** Diterima & Diimplementasikan
+- **Konteks:** Akun bisa didaftarkan dengan email milik orang lain (typo/salah ketik) dan tetap mendapat token aplikasi. Untuk aplikasi sekolah, email juga kanal pemulihan akun, jadi kepemilikan email harus dibuktikan.
+- **Keputusan:**
+  1. Register tidak lagi langsung memberi akses: `email_verified=false`, tanpa token, dan link verifikasi dikirim (sekali pakai, berlaku 24 jam).
+  2. `POST /auth/login` membalas **403** dengan `errors.email_verified=false` selama belum verifikasi; aplikasi menampilkan layar "cek email" + tombol kirim ulang.
+  3. `POST /auth/verify-email` dan `POST /auth/verify-email/resend` (balasan selalu generik, token lama dibatalkan saat kirim ulang).
+  4. Akun Google dianggap terverifikasi (Google sudah memverifikasi email); akun lama di-backfill `true` supaya tidak ada yang terkunci.
+  5. Rotasi refresh token juga menolak akun belum terverifikasi (pertahanan berlapis).
+- **Konsekuensi:** SMTP menjadi **wajib** di production — dengan `SMTP_HOST` kosong, `NoopMailer` aktif dan link tidak pernah terkirim, sehingga pendaftar tidak bisa login. Kegagalan kirim hanya dicatat di log; user memakai endpoint resend.
+

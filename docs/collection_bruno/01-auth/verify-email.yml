@@ -1,0 +1,30 @@
+info:
+  name: Verify Email
+  type: http
+  seq: 10
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/verify-email"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "token": "{{emailVerificationToken}}"
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: Verifikasi email dari link (sekali pakai, berlaku 24 jam)

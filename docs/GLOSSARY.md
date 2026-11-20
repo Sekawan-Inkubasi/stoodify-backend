@@ -18,3 +18,7 @@ Klaim `sub` dari Google ID token — ID unik dan stabil per akun Google. Dipakai
 
 ## Onboarding Profil (`profile_completed`)
 Status kelengkapan sekolah/kelas/jurusan. Akun hasil login Google dibuat dengan `false`; selama `false`, endpoint AI dan statistik membalas `409` sampai `PATCH /users/me/onboarding` diisi. Penjadwalan otomatis di latar belakang melewati akun ini.
+
+## Email Verified (`email_verified`)
+Penanda bahwa pemilik email sudah membuktikan kepemilikannya lewat link verifikasi (sekali pakai, 24 jam). Akun dengan nilai `false` dianggap belum punya akun: login dan rotasi refresh token ditolak `403`. Akun Google selalu `true` karena Google sudah memverifikasi emailnya.
+
