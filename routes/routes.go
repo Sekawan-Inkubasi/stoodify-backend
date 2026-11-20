@@ -9,11 +9,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 
 	"stoodify_backend/config"
 	ctrl "stoodify_backend/controllers"
 	"stoodify_backend/docs"
 	"stoodify_backend/internal/ratelimit"
+	"stoodify_backend/internal/response"
 	"stoodify_backend/middlewares"
 )
 
@@ -62,6 +65,12 @@ func ConfigureTrustedProxies(r *gin.Engine, trustedProxiesEnv string) error {
 
 func SetupRoutes() *gin.Engine {
 	r := gin.Default()
+
+	// Error validator memakai nama field JSON (snake_case), bukan nama field Go,
+	// supaya client menerima `confirm_password` alih-alih `RegisterInput.ConfirmPassword`.
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		response.DaftarkanNamaFieldJSON(v)
+	}
 
 	// Batasi proxy tepercaya: hanya percaya header XFF jika IP proxy dikonfigurasi dengan benar
 	if err := ConfigureTrustedProxies(r, os.Getenv("TRUSTED_PROXIES")); err != nil {

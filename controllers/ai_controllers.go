@@ -1165,7 +1165,7 @@ func (ctrl *AIController) Chat(konteks *gin.Context) {
 	user := currentUser(konteks)
 	var input chatRequest
 	if err := konteks.ShouldBindJSON(&input); err != nil {
-		response.BadRequest(konteks, "pesan chat tidak valid", map[string]string{"error": err.Error()})
+		response.ValidationError(konteks, err)
 		return
 	}
 
