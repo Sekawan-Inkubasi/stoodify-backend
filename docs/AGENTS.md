@@ -21,7 +21,7 @@ Sebelum melakukan perubahan atau membaca kode, baca file-file referensi berikut 
 ### 📊 Status & Manajemen Tugas
 - [`docs/to-do.md`](to-do.md) — Single source of truth backlog fitur, bug fix, dan integrasi mobile (Tahap 1 s.d. Tahap 4).
 - [`docs/STATE.md`](STATE.md) — Catatan status aktif dan serah terima antar sesi agent.
-- [`docs/CONTEXT.md`](CONTEXT.md) — Konteks bisnis Stoodify, target pengguna (siswa SMP/SMA/SMK Indonesia), dan jadwal pameran inkubasi.
+- [`docs/CONTEXT.md`](CONTEXT.md) — Konteks bisnis Stoodify, target pengguna (siswa SMA/SMK kelas 10–13 Indonesia), dan jadwal pameran inkubasi.
 
 ### 📖 Pengetahuan & Spesifikasi API
 - [`README.md`](../README.md) — Panduan setup lokal dan ringkasan fitur.

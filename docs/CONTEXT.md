@@ -5,7 +5,7 @@ Latar belakang produk, audiens sasaran, dan konteks pameran inkubasi.
 ---
 
 ## 1. Mengenai Stoodify
-Stoodify adalah aplikasi asisten belajar harian berbasis kecerdasan buatan (AI) yang dirancang khusus untuk siswa sekolah di Indonesia (SMP, SMA, dan SMK). Masalah utama yang dipecahkan adalah penumpukan tugas sekolah, ketidakmampuan menentukan prioritas belajar, dan bentrok antara jadwal sekolah dengan aktivitas pribadi.
+Stoodify adalah aplikasi asisten belajar harian berbasis kecerdasan buatan (AI) yang dirancang khusus untuk siswa SMA dan SMK kelas 10–13 di Indonesia (rentang `grade` yang diterima backend: 10–13). Masalah utama yang dipecahkan adalah penumpukan tugas sekolah, ketidakmampuan menentukan prioritas belajar, dan bentrok antara jadwal sekolah dengan aktivitas pribadi.
 
 ## 2. Fitur Pembeda Utama (Key Differentiators)
 1. **Dynamic Priority Scoring Engine**: Menghitung secara otomatis urutan pengerjaan tugas berdasarkan 5 faktor (urgensi deadline, tingkat kesulitan, estimasi durasi, bobot jenis tugas, dan risiko terlambat).

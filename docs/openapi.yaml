@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Stoodify API
   version: 1.0.0
-  description: 'REST API Stoodify — Asisten Belajar Berbasis AI untuk Siswa SMP/SMA/SMK.
+  description: 'REST API Stoodify — Asisten Belajar Berbasis AI untuk Siswa SMA/SMK (kelas 10-13).
 
     Golang + Gin + GORM + PostgreSQL.'
   contact:
