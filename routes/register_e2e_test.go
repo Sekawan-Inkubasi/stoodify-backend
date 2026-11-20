@@ -42,8 +42,8 @@ func postJSON(r *gin.Engine, path, body string) *httptest.ResponseRecorder {
 	return w
 }
 
-// End-to-end: layar daftar mobile hanya mengirim nama, email, password.
-func TestE2ERegisterHanyaTigaField(t *testing.T) {
+// End-to-end: backend adalah acuan. Payload tanpa school/grade/major ditolak.
+func TestE2ERegisterWajibSchoolGradeMajor(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 	r := setupRouterE2E(t)
 
@@ -54,13 +54,33 @@ func TestE2ERegisterHanyaTigaField(t *testing.T) {
 		"confirm_password":"rahasia123"
 	}`)
 
-	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 
 	var resp struct {
-		Success bool `json:"success"`
+		Errors map[string]string `json:"errors"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.True(t, resp.Success)
+	assert.Equal(t, "wajib diisi", resp.Errors["school"])
+	assert.Equal(t, "wajib diisi", resp.Errors["grade"])
+	assert.Equal(t, "wajib diisi", resp.Errors["major"])
+}
+
+// End-to-end: payload lengkap sesuai kontrak berhasil.
+func TestE2ERegisterLengkap(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	r := setupRouterE2E(t)
+
+	w := postJSON(r, "/api/auth/register", `{
+		"name":"Aliezzar Wijaya",
+		"email":"aliezzar42@gmail.com",
+		"school":"SMK Telkom Sidoarjo",
+		"grade":10,
+		"major":"SIJA",
+		"password":"rahasia123",
+		"confirm_password":"rahasia123"
+	}`)
+
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 }
 
 // End-to-end: error 400 di production tidak boleh membocorkan detail Go.

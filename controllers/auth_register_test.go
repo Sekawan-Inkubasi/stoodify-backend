@@ -29,23 +29,50 @@ func routerRegister(t *testing.T) *gin.Engine {
 	return r
 }
 
-func TestRegisterCukupNamaEmailPassword(t *testing.T) {
+func TestRegisterMewajibkanSchoolGradeMajor(t *testing.T) {
 	setupAITestDB(t)
 	r := routerRegister(t)
 
+	// Form mobile yang hanya mengirim 3 field harus DITOLAK: backend yang jadi acuan.
 	body := `{"name":"Aliezzar Wijaya","email":"aliezzar42@gmail.com","password":"rahasia123","confirm_password":"rahasia123"}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusCreated, w.Code, "daftar tanpa school/grade/major harus berhasil: %s", w.Body.String())
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+
+	var resp struct {
+		Errors map[string]string `json:"errors"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "wajib diisi", resp.Errors["school"])
+	assert.Equal(t, "wajib diisi", resp.Errors["grade"])
+	assert.Equal(t, "wajib diisi", resp.Errors["major"])
+
+	// Tidak ada user yang tersimpan dari request gagal.
+	var jumlah int64
+	require.NoError(t, configDB().Model(&migrations.User{}).Where("email = ?", "aliezzar42@gmail.com").Count(&jumlah).Error)
+	assert.Zero(t, jumlah)
+}
+
+func TestRegisterLengkapBerhasil(t *testing.T) {
+	setupAITestDB(t)
+	r := routerRegister(t)
+
+	body := `{"name":"Aliezzar Wijaya","email":"aliezzar42@gmail.com","school":"SMK Telkom Sidoarjo","grade":10,"major":"SIJA","password":"rahasia123","confirm_password":"rahasia123"}`
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 
 	var user migrations.User
 	require.NoError(t, configDB().Where("email = ?", "aliezzar42@gmail.com").First(&user).Error)
-	assert.Equal(t, "Aliezzar Wijaya", user.Name)
-	assert.Empty(t, user.School)
-	assert.Zero(t, user.Grade)
+	assert.Equal(t, "SMK Telkom Sidoarjo", user.School)
+	assert.Equal(t, int8(10), user.Grade)
+	assert.Equal(t, "SIJA", user.Major)
 }
 
 func TestRegisterMenolakGradeDiLuarRentang(t *testing.T) {

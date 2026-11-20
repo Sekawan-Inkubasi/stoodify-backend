@@ -55,3 +55,11 @@ baru — selalu pakai `response.ValidationError` / `response.ServerError`.
 **Catatan penting:** `docker-compose.yml` menetapkan `APP_ENV=production`, jadi container
 produksi selalu menyembunyikan detail internal. Untuk melihat detail saat debugging di
 lokal, jalankan `go run . serve` dengan `APP_ENV=development` (default).
+
+## 6. Register Ditolak: `school`, `grade`, `major` Wajib
+
+**Gejala:** daftar akun gagal dengan `errors: {"school": "wajib diisi", "grade": "wajib diisi", "major": "wajib diisi"}`.
+
+**Ini bukan bug backend.** Kontrak register mewajibkan `school`, `grade` (7–13), dan `major`; form daftar aplikasi harus menyediakan ketiganya. Jangan melonggarkan tag `binding` di `RegisterInput` supaya form lama lolos — frontend yang menyesuaikan ke backend, bukan sebaliknya.
+
+**Yang boleh diperbaiki di backend hanya pesan errornya** (lihat #5): pesan per field yang ramah + tidak membocorkan nama struct Go di production.

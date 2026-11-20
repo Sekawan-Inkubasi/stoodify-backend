@@ -394,6 +394,9 @@ paths:
               required:
               - name
               - email
+              - school
+              - grade
+              - major
               - password
               - confirm_password
               properties:
@@ -415,17 +418,14 @@ paths:
                   example: rahasia123
                 school:
                   type: string
-                  description: Opsional, bisa dilengkapi lewat PATCH /users/me
                   example: SMK Telkom Sidoarjo
                 grade:
                   type: integer
                   minimum: 7
                   maximum: 13
-                  description: Opsional (7-13), bisa dilengkapi lewat PATCH /users/me
                   example: 10
                 major:
                   type: string
-                  description: Opsional, bisa dilengkapi lewat PATCH /users/me
                   example: SIJA
       responses:
         '201':
