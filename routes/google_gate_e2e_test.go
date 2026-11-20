@@ -18,6 +18,8 @@ import (
 	"stoodify_backend/migrations"
 )
 
+func ptrSub(s string) *string { return &s }
+
 // setupRouterOAuth menyiapkan router penuh + DB sqlite dengan seluruh tabel,
 // lalu mengembalikan akun Google yang belum onboarding beserta access token-nya.
 func setupRouterOAuth(t *testing.T) (*gin.Engine, migrations.User, string) {
@@ -35,7 +37,7 @@ func setupRouterOAuth(t *testing.T) (*gin.Engine, migrations.User, string) {
 
 	user := migrations.User{
 		Name: "Akun Google", Email: "oauth@example.com",
-		GoogleSub: "sub-oauth", AuthProvider: migrations.AuthProviderGoogle,
+		GoogleSub: ptrSub("sub-oauth"), AuthProvider: migrations.AuthProviderGoogle,
 		TokenVersion: 1,
 	}
 	require.NoError(t, db.Create(&user).Error)

@@ -114,12 +114,13 @@ func (ctrl *AuthController) userDariGoogle(konteks *gin.Context, klaim googleaut
 	//    terverifikasi Google, jadi kepemilikan email terbukti).
 	err = ctrl.DB.WithContext(ctx).Where("email = ?", klaim.Email).First(&user).Error
 	if err == nil {
-		if user.GoogleSub != "" && user.GoogleSub != klaim.Sub {
+		if user.GoogleSub != nil && *user.GoogleSub != klaim.Sub {
 			return migrations.User{}, false, &emailBentrokError{
 				pesan: "email ini sudah terhubung ke akun Google lain",
 			}
 		}
-		user.GoogleSub = klaim.Sub
+		sub := klaim.Sub
+		user.GoogleSub = &sub
 		ctrl.lengkapiDariGoogle(&user, klaim)
 		if err := ctrl.DB.WithContext(ctx).Save(&user).Error; err != nil {
 			return migrations.User{}, false, err
@@ -134,7 +135,7 @@ func (ctrl *AuthController) userDariGoogle(konteks *gin.Context, klaim googleaut
 	user = migrations.User{
 		Name:             namaDariGoogle(klaim),
 		Email:            klaim.Email,
-		GoogleSub:        klaim.Sub,
+		GoogleSub:        &klaim.Sub,
 		AuthProvider:     migrations.AuthProviderGoogle,
 		ProfileCompleted: false,
 		AvatarURL:        klaim.Picture,

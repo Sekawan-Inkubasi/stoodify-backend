@@ -66,8 +66,9 @@ type User struct {
 	Major        string `gorm:"type:varchar(100)" json:"major"`
 	AvatarURL    string `gorm:"type:varchar(255)" json:"avatar_url"`
 	// GoogleSub adalah klaim `sub` dari Google (stabil, tidak berubah walau email berubah).
-	// Kosong = akun tidak terhubung ke Google.
-	GoogleSub string `gorm:"column:google_sub;type:varchar(255);uniqueIndex" json:"-"`
+	// Pointer dipakai agar akun tanpa Google bernilai NULL: index unik mengizinkan
+	// banyak NULL, tapi tidak mengizinkan banyak string kosong.
+	GoogleSub *string `gorm:"column:google_sub;type:varchar(255);uniqueIndex" json:"-"`
 	// AuthProvider: "password" (default) atau "google" (tanpa password).
 	AuthProvider string `gorm:"column:auth_provider;type:varchar(20);not null;default:password" json:"auth_provider"`
 	// ProfileCompleted: false untuk akun Google yang belum mengisi sekolah/kelas/jurusan.

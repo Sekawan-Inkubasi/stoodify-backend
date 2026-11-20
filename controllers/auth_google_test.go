@@ -23,6 +23,8 @@ import (
 
 const clientIDUji = "1043856692765-q1n1p9ueutn3a7iif5gm3s7081o9koud.apps.googleusercontent.com"
 
+func ptrStr(s string) *string { return &s }
+
 type keyUji struct{ key *rsa.PrivateKey }
 
 func (k keyUji) PublicKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
@@ -132,7 +134,8 @@ func TestLoginGoogleAutoLinkEmailTerdaftar(t *testing.T) {
 
 	var sesudah migrations.User
 	require.NoError(t, configDB().First(&sesudah, user.ID).Error)
-	assert.Equal(t, "sub-link", sesudah.GoogleSub, "email terverifikasi di-auto-link")
+	require.NotNil(t, sesudah.GoogleSub)
+	assert.Equal(t, "sub-link", *sesudah.GoogleSub, "email terverifikasi di-auto-link")
 	assert.Equal(t, migrations.AuthProviderPassword, sesudah.AuthProvider, "akun password tetap punya password")
 	assert.True(t, sesudah.ProfileCompleted)
 
@@ -145,7 +148,8 @@ func TestLoginGoogleMenolakEmailTerhubungAkunGoogleLain(t *testing.T) {
 	r, key, user := setupGoogle(t)
 
 	terhubung := user
-	terhubung.GoogleSub = "sub-lain"
+	subLain := "sub-lain"
+	terhubung.GoogleSub = &subLain
 	require.NoError(t, configDB().Save(&terhubung).Error)
 
 	w := panggilGoogle(r, tokenGoogle(t, key, klaimGoogle{
@@ -168,7 +172,7 @@ func TestLoginPasswordDitolakUntukAkunGoogle(t *testing.T) {
 	db := setupAITestDB(t)
 	user := migrations.User{
 		Name: "Akun Google", Email: "google@example.com", PasswordHash: "",
-		GoogleSub: "sub-google", AuthProvider: migrations.AuthProviderGoogle,
+		GoogleSub: ptrStr("sub-google"), AuthProvider: migrations.AuthProviderGoogle,
 		ProfileCompleted: true, TokenVersion: 1,
 	}
 	require.NoError(t, db.Create(&user).Error)
@@ -194,7 +198,7 @@ func TestOnboardingMelengkapiProfil(t *testing.T) {
 	db := setupAITestDB(t)
 	user := migrations.User{
 		Name: "Akun Google", Email: "onboard@example.com",
-		GoogleSub: "sub-onboard", AuthProvider: migrations.AuthProviderGoogle,
+		GoogleSub: ptrStr("sub-onboard"), AuthProvider: migrations.AuthProviderGoogle,
 		ProfileCompleted: false, TokenVersion: 1,
 	}
 	require.NoError(t, db.Create(&user).Error)
@@ -230,7 +234,7 @@ func TestOnboardingMenolakGradeDiLuarRentang(t *testing.T) {
 	db := setupAITestDB(t)
 	user := migrations.User{
 		Name: "Akun Google", Email: "onboard2@example.com",
-		GoogleSub: "sub-onboard2", AuthProvider: migrations.AuthProviderGoogle,
+		GoogleSub: ptrStr("sub-onboard2"), AuthProvider: migrations.AuthProviderGoogle,
 		ProfileCompleted: false, TokenVersion: 1,
 	}
 	require.NoError(t, db.Create(&user).Error)
@@ -257,4 +261,22 @@ func TestOnboardingMenolakGradeDiLuarRentang(t *testing.T) {
 	var sesudah migrations.User
 	require.NoError(t, db.First(&sesudah, user.ID).Error)
 	assert.False(t, sesudah.ProfileCompleted, "profil tidak boleh dianggap lengkap")
+}
+
+// Regresi: kolom google_sub harus NULL (bukan string kosong) untuk akun non-Google,
+// karena index unik menolak banyak nilai "" — dulu ini membuat INSERT user kedua gagal.
+func TestGoogleSubUnikTapiBolehNullBanyak(t *testing.T) {
+	db := setupAITestDB(t)
+
+	a := migrations.User{Name: "A", Email: "a@example.com", PasswordHash: "x", TokenVersion: 1}
+	b := migrations.User{Name: "B", Email: "b@example.com", PasswordHash: "x", TokenVersion: 1}
+	require.NoError(t, db.Create(&a).Error, "user tanpa Google harus bisa dibuat berkali-kali")
+	require.NoError(t, db.Create(&b).Error)
+
+	sub := "sub-sama"
+	c := migrations.User{Name: "C", Email: "c@example.com", PasswordHash: "x", TokenVersion: 1, GoogleSub: &sub}
+	require.NoError(t, db.Create(&c).Error)
+
+	d := migrations.User{Name: "D", Email: "d@example.com", PasswordHash: "x", TokenVersion: 1, GoogleSub: &sub}
+	assert.Error(t, db.Create(&d).Error, "google_sub yang sama harus ditolak index unik")
 }
