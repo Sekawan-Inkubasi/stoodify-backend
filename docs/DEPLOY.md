@@ -16,6 +16,9 @@ Backend Go ini butuh satu proses (HTTP + scheduler goroutine) dan satu PostgreSQ
 | `AI_TIMEOUT_SECONDS` | opsional, default `15`. Lewat batas ini klien dapat `502` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | opsional, untuk email reset password. Kosong = `NoopMailer` (email tidak dikirim, token tetap dibuat) |
 | `PASSWORD_RESET_URL` | base URL halaman reset di aplikasi, dipakai di body email |
+| `EMAIL_VERIFICATION_URL` | URL halaman **jembatan** verifikasi di backend, mis. `https://api.domainmu/verify-email` — dipakai di body email |
+| `EMAIL_VERIFICATION_DEEPLINK` | Skema deep link aplikasi, default `stoodify://verify-email`. Harus sama dengan konfigurasi app |
+| `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_FROM` | Wajib untuk production: tanpa `SMTP_HOST`, `NoopMailer` aktif dan pendaftar tidak pernah menerima link verifikasi (tidak bisa login) |
 
 AutoMigrate + index dijalankan saat boot, jadi deploy pertama langsung membuat tabel.
 

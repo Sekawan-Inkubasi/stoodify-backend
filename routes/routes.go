@@ -117,6 +117,10 @@ func SetupRoutes() *gin.Engine {
 		})
 	})
 
+	// Jembatan link email (https) -> deep link aplikasi. Halaman ini hanya
+	// memeriksa status token; verifikasi tetap lewat POST /api/auth/verify-email.
+	r.GET("/verify-email", halamanVerifikasi(config.DB))
+
 	r.Static("/uploads", "./uploads")
 
 	r.NoRoute(func(c *gin.Context) {

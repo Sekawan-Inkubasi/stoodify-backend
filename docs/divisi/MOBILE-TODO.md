@@ -89,3 +89,12 @@ Latar: jadwal AI sekarang **diterapkan otomatis** oleh backend setiap ada peruba
 - Endpoint `accept`/`reject` **masih ada** di backend untuk sementara (deprecated). Jangan dipakai lagi, tapi jangan panik kalau masih muncul di collection Bruno lama.
 - Kontrak payload/response tidak berubah selain tambahan field opsional (`ai_source`, `ai_warnings`, `plan_version`).
 - Perubahan urutan kerja: backend fase 1–3 dulu, mobile bisa mulai poin 1, 2, 5, 6 paralel karena tidak menunggu endpoint baru (kecuali `undo`).
+
+## Verifikasi Email (wajib sebelum login)
+
+1. Layar daftar: setelah `POST /api/auth/register` (201), tampilkan layar **"Cek email kamu"** dengan tombol **Kirim ulang** → `POST /api/auth/verify-email/resend { email }`.
+2. Login yang dibalas **403** dengan `errors.email_verified = "false"` → arahkan ke layar yang sama, bukan pesan error umum.
+3. Daftarkan **deep link** `stoodify://verify-email` di `AndroidManifest.xml` (intent-filter `BROWSABLE` + skema `stoodify`, host `verify-email`) dan `Info.plist` (URL Types) untuk iOS.
+4. Saat app dibuka dengan `stoodify://verify-email?token=...` → ambil `token` → `POST /api/auth/verify-email { token }` → sukses: tampilkan "Email terverifikasi" dan lanjut ke layar login (token aplikasi belum ada, jadi user login manual).
+5. Kalau token kedaluwarsa (400) → tawarkan kirim ulang.
+

@@ -501,6 +501,31 @@ paths:
           description: Email belum diverifikasi (errors.email_verified = "false")
         '422':
           description: id_token kosong dan email/password tidak lengkap
+  /verify-email:
+    get:
+      tags:
+      - Auth
+      summary: Halaman jembatan link verifikasi (HTML, di luar /api)
+      description: |
+        Dibuka saat user mengeklik link di email. Bila token masih berlaku,
+        halaman menampilkan tombol dan mengalihkan ke deep link aplikasi
+        (stoodify://verify-email?token=...). Halaman ini TIDAK memverifikasi;
+        verifikasi dilakukan aplikasi lewat POST /api/auth/verify-email.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Halaman HTML status token
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Token tidak ada pada query string
   /auth/verify-email:
     post:
       tags:

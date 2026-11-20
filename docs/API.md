@@ -278,6 +278,21 @@ Selalu **200** dengan pesan generik (tidak membocorkan apakah email terdaftar). 
 
 Akun Google tidak perlu verifikasi (email sudah diverifikasi Google).
 
+#### Halaman link email (di luar `/api`)
+
+```
+GET /verify-email?token=<token>
+```
+
+Halaman HTML kecil yang dibuka saat user mengeklik link di email. Isinya:
+
+- **token valid** → tombol **Buka Aplikasi Stoodify** + auto-redirect ke `stoodify://verify-email?token=<token>`
+- **kedaluwarsa / sudah dipakai / tidak dikenal** → penjelasan + arahan minta kirim ulang
+
+Halaman ini **tidak** memverifikasi (tidak menandai token terpakai) — verifikasi tetap lewat `POST /api/auth/verify-email` dari aplikasi. Ini disengaja: email client sering *prefetch* link, jadi kalau halaman langsung memverifikasi, token bisa habis sebelum user benar-benar mengekliknya.
+
+Skema deep link diatur lewat `EMAIL_VERIFICATION_DEEPLINK` (default `stoodify://verify-email`).
+
 ---
 
 ## 2. Format Response (semua endpoint)
