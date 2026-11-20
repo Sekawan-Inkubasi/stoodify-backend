@@ -8,21 +8,15 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
-	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"stoodify_backend/internal/response"
 	"stoodify_backend/migrations"
 )
 
 func routerRegister(t *testing.T) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
-		response.DaftarkanNamaFieldJSON(v)
-	}
 	r := gin.New()
 	auth := NewAuthController(configDB())
 	r.POST("/auth/register", auth.Register)
@@ -46,9 +40,9 @@ func TestRegisterMewajibkanSchoolGradeMajor(t *testing.T) {
 		Errors map[string]string `json:"errors"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "wajib diisi", resp.Errors["school"])
-	assert.Equal(t, "wajib diisi", resp.Errors["grade"])
-	assert.Equal(t, "wajib diisi", resp.Errors["major"])
+	assert.Equal(t, "wajib diisi", resp.Errors["school"], "body: %s", w.Body.String())
+	assert.Equal(t, "wajib diisi", resp.Errors["grade"], "body: %s", w.Body.String())
+	assert.Equal(t, "wajib diisi", resp.Errors["major"], "body: %s", w.Body.String())
 
 	// Tidak ada user yang tersimpan dari request gagal.
 	var jumlah int64
@@ -79,7 +73,7 @@ func TestRegisterMenolakGradeDiLuarRentang(t *testing.T) {
 	setupAITestDB(t)
 	r := routerRegister(t)
 
-	body := `{"name":"Siswa","email":"siswa@example.com","grade":3,"password":"rahasia123","confirm_password":"rahasia123"}`
+	body := `{"name":"Siswa","email":"siswa@example.com","grade":9,"password":"rahasia123","confirm_password":"rahasia123"}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -92,7 +86,7 @@ func TestRegisterMenolakGradeDiLuarRentang(t *testing.T) {
 		Errors  map[string]string `json:"errors"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "minimal 7", resp.Errors["grade"])
+	assert.Equal(t, "minimal 10", resp.Errors["grade"])
 }
 
 func TestRegisterErrorTidakMembocorkanNamaStruct(t *testing.T) {

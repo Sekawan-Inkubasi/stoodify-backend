@@ -28,7 +28,7 @@ type UpdateMeInput struct {
 	Name   *string `json:"name" binding:"omitempty,min=1,max=100"`
 	Email  *string `json:"email" binding:"omitempty,email,max=100"`
 	School *string `json:"school" binding:"omitempty,max=150"`
-	Grade  *int8   `json:"grade" binding:"omitempty,min=7,max=13"`
+	Grade  *int8   `json:"grade" binding:"omitempty,min=10,max=13"`
 	Major  *string `json:"major" binding:"omitempty,max=100"`
 }
 
@@ -41,8 +41,41 @@ type PreferencesInput struct {
 	MaxSessionsPerDay int    `json:"max_sessions_per_day" binding:"omitempty,min=1,max=10"`
 }
 
+// OnboardingInput: data wajib yang harus dilengkapi akun Google sebelum fitur
+// belajar (jadwal AI, prediksi, statistik) terbuka.
+type OnboardingInput struct {
+	School string `json:"school" binding:"required,max=150"`
+	Grade  int8   `json:"grade" binding:"required,min=10,max=13"`
+	Major  string `json:"major" binding:"required,max=100"`
+}
+
 func (ctrl *UserController) GetMe(konteks *gin.Context) {
 	response.OK(konteks, "data user", currentUser(konteks))
+}
+
+// CompleteOnboarding melengkapi sekolah/kelas/jurusan lalu membuka fitur belajar.
+// Idempotent: bisa dipanggil ulang untuk memperbarui data yang sama.
+func (ctrl *UserController) CompleteOnboarding(konteks *gin.Context) {
+	user := currentUser(konteks)
+
+	var input OnboardingInput
+	if err := konteks.ShouldBindJSON(&input); err != nil {
+		response.ValidationError(konteks, err)
+		return
+	}
+
+	user.School = strings.TrimSpace(input.School)
+	user.Grade = input.Grade
+	user.Major = strings.TrimSpace(input.Major)
+	user.ProfileCompleted = true
+
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&user).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+
+	picuRegenerasi(user.ID)
+	response.OK(konteks, "profil belajar lengkap, semua fitur sudah terbuka", user)
 }
 
 func (ctrl *UserController) UpdateMe(konteks *gin.Context) {

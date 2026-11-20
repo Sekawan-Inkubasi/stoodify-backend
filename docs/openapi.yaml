@@ -2,9 +2,9 @@ openapi: 3.0.3
 info:
   title: Stoodify API
   version: 1.0.0
-  description: 'REST API Stoodify — Asisten Belajar Berbasis AI untuk Siswa SMP/SMA/SMK.
+  description: 'REST API Stoodify — Asisten Belajar Berbasis AI untuk Siswa SMA/SMK (kelas 10-13).
 
-    Golang + Gin + GORM + Supabase PostgreSQL.'
+    Golang + Gin + GORM + PostgreSQL.'
   contact:
     name: Stoodify Team
     url: https://github.com/Sekawan-Inkubasi/stoodify-backend
@@ -87,6 +87,32 @@ components:
           - teacher
           - admin
           example: student
+        school:
+          type: string
+          example: SMK Telkom Sidoarjo
+        grade:
+          type: integer
+          minimum: 0
+          maximum: 13
+          description: 0 berarti belum diisi (akun Google yang belum onboarding)
+          example: 10
+        major:
+          type: string
+          example: SIJA
+        auth_provider:
+          type: string
+          enum:
+          - password
+          - google
+          example: password
+        profile_completed:
+          type: boolean
+          description: false = akun Google yang belum mengisi sekolah/kelas/jurusan
+          example: true
+        email_verified:
+          type: boolean
+          description: false = pendaftar password yang belum klik link verifikasi (login ditolak 403)
+          example: true
         created_at:
           type: string
           format: date-time
@@ -379,6 +405,15 @@ components:
           - accurate
           - inaccurate
 paths:
+  /:
+    get:
+      tags:
+      - Root
+      summary: Info service (tanpa auth)
+      security: []
+      responses:
+        '200':
+          description: Nama service, versi, api_base, tautan docs
   /auth/register:
     post:
       tags:
@@ -421,7 +456,7 @@ paths:
                   example: SMK Telkom Sidoarjo
                 grade:
                   type: integer
-                  minimum: 7
+                  minimum: 10
                   maximum: 13
                   example: 10
                 major:
@@ -449,9 +484,8 @@ paths:
           application/json:
             schema:
               type: object
-              required:
-              - email
-              - password
+              description: Kirim email+password, ATAU id_token (Google). Bila id_token
+                diisi, email/password tidak diperlukan.
               properties:
                 email:
                   type: string
@@ -461,13 +495,162 @@ paths:
                   type: string
                   format: password
                   example: rahasia123
+                id_token:
+                  type: string
+                  description: Google ID token; memakai jalur login Google yang sama
+                    dengan POST /auth/google
       responses:
         '200':
           description: Login berhasil, token diberikan
         '400':
           description: Body request tidak valid
         '401':
-          description: Email atau password salah
+          description: Email atau password salah; atau akun hanya terdaftar lewat Google
+        '403':
+          description: Email belum diverifikasi (errors.email_verified = "false")
+        '422':
+          description: id_token kosong dan email/password tidak lengkap
+  /verify-email:
+    get:
+      tags:
+      - Auth
+      summary: Halaman jembatan link verifikasi (HTML, di luar /api)
+      description: |
+        Dibuka saat user mengeklik link di email. Bila token masih berlaku,
+        halaman menampilkan tombol dan mengalihkan ke deep link aplikasi
+        (stoodify://verify-email?token=...). Halaman ini TIDAK memverifikasi;
+        verifikasi dilakukan aplikasi lewat POST /api/auth/verify-email.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Halaman HTML status token
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Token tidak ada pada query string
+  /auth/verify-email:
+    post:
+      tags:
+      - Auth
+      summary: Verifikasi email dari link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Email terverifikasi, login sudah bisa dilakukan
+        '400':
+          description: Token tidak valid, sudah dipakai, atau kedaluwarsa
+  /auth/verify-email/resend:
+    post:
+      tags:
+      - Auth
+      summary: Kirim ulang link verifikasi
+      description: Selalu 200 dengan pesan generik; token lama dibatalkan bila email valid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Pesan generik (tidak membocorkan status email)
+  /ai/chat:
+    post:
+      tags:
+      - AI Bridge
+      summary: Chatbot asisten belajar
+      description: |
+        Meneruskan pesan ke service AI (AI_CHAT_URL). Bila service belum
+        dikonfigurasi, backend memakai default http://127.0.0.1:8000/chat.
+        Butuh profil lengkap (403 saat profile_completed=false via 409 gate di grup /ai).
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - message
+              properties:
+                message:
+                  type: string
+                  example: Rangkum materi integral untukku
+                history:
+                  type: array
+                  items:
+                    type: object
+                  description: Riwayat percakapan (format bebas, diteruskan apa adanya)
+                context:
+                  type: object
+                  description: Konteks tambahan dari aplikasi (mapel, tugas, dll)
+      responses:
+        '200':
+          description: Balasan chat (reply, action, model, source, latency_ms)
+        '400':
+          description: Body tidak valid
+        '409':
+          description: Profil belum lengkap
+        '502':
+          description: Service AI gagal membalas
+  /auth/google:
+    post:
+      tags:
+      - Auth
+      summary: Login / daftar dengan Google
+      description: |
+        Menukar Google ID token (dari Google Sign-In SDK) menjadi token aplikasi.
+        Backend memverifikasi signature, issuer, audience, exp, dan email_verified.
+        Akun baru dibuat tanpa password dengan profile_completed=false.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - id_token
+              properties:
+                id_token:
+                  type: string
+                  description: ID token dari Google Sign-In SDK (bukan access token)
+      responses:
+        '200':
+          description: Login berhasil; cek needs_onboarding pada data
+        '201':
+          description: Akun baru dibuat; needs_onboarding bernilai true
+        '400':
+          description: Body tidak valid
+        '401':
+          description: Token Google tidak valid / kedaluwarsa / email belum terverifikasi
+        '409':
+          description: Email sudah terhubung ke akun Google lain
+        '503':
+          description: GOOGLE_CLIENT_ID belum dikonfigurasi di server
   /auth/refresh:
     post:
       tags:
@@ -554,6 +737,41 @@ paths:
       responses:
         '200':
           description: Profil diperbarui
+  /users/me/onboarding:
+    patch:
+      tags:
+      - Users
+      summary: Lengkapi profil (sekolah, kelas, jurusan)
+      description: Wajib untuk akun Google sebelum memakai fitur AI/statistik. Idempotent.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - school
+              - grade
+              - major
+              properties:
+                school:
+                  type: string
+                  example: SMK Telkom Sidoarjo
+                grade:
+                  type: integer
+                  minimum: 10
+                  maximum: 13
+                  example: 10
+                major:
+                  type: string
+                  example: SIJA
+      responses:
+        '200':
+          description: Profil lengkap, fitur belajar terbuka
+        '400':
+          description: Input tidak valid (grade harus 10-13)
   /users/me/preferences:
     get:
       tags:
@@ -1859,7 +2077,7 @@ paths:
                   example: 1
                 grade:
                   type: integer
-                  minimum: 7
+                  minimum: 10
                   maximum: 13
                 major:
                   type: string

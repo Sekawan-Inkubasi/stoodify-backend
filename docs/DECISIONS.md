@@ -78,3 +78,30 @@ Catatan pertimbangan dan keputusan desain arsitektural teknis Stoodify Backend.
   4. Sebelum menulis, backend menyimpan snapshot untuk fitur **Urungkan**; penulisan dalam satu transaksi (hapus sesi AI `planned` di tanggal itu → insert baru).
   5. Tombol manual "Susun ulang" dibatasi 1×/10 menit per user.
 - **Konsekuensi:** keputusan penjadwalan tetap milik AI (bridge-only), backend hanya mengatur ritme, menyimpan, dan menjaga sesi milik user. Horizon masih satu tanggal (hari ini) + rollover 00:05; horizon 7 hari menunggu dukungan parameter di engine.
+
+---
+
+## ADR-009: Login Google dengan Auto-link Email dan Onboarding Profil
+- **Status:** Diterima & Diimplementasikan
+- **Konteks:** Form daftar meminta sekolah/kelas/jurusan, sedangkan Google hanya memberi nama/email/foto. Menahan token aplikasi sampai form selesai memaksa adanya token onboarding sementara (TTL pendek, jalur resume terpisah) dan berisiko menyisakan akun setengah jadi tanpa sesi.
+- **Keputusan:**
+  1. `POST /auth/google` memverifikasi ID token sendiri (signature via JWKS Google, `iss`, `aud` = `GOOGLE_CLIENT_ID`, `exp`, `email_verified`), lalu **selalu** menerbitkan access+refresh token aplikasi.
+  2. Identitas memakai klaim `sub` (`users.google_sub`, unik) — bukan email, karena email bisa berubah.
+  3. Email terverifikasi yang sudah terdaftar **auto-link**: akun password tetap bisa login dengan password; akun Google-only tidak punya password.
+  4. Akun baru dibuat dengan `profile_completed=false`; fitur AI/statistik diblok `409` lewat middleware sampai `PATCH /users/me/onboarding` diisi. Penjadwalan otomatis di latar belakang melewati akun ini.
+  5. Login password untuk akun Google ditolak dengan pesan eksplisit; reset password tidak mengirim email untuk akun tersebut.
+- **Konsekuensi:** butuh kolom `google_sub`, `auth_provider`, `profile_completed` (data lama di-backfill `password`/`true`). Client ID Android/iOS dikelola aplikasi masing-masing; backend hanya menyimpan client ID web.
+
+---
+
+## ADR-010: Verifikasi Email Wajib Sebelum Login
+- **Status:** Diterima & Diimplementasikan
+- **Konteks:** Akun bisa didaftarkan dengan email milik orang lain (typo/salah ketik) dan tetap mendapat token aplikasi. Untuk aplikasi sekolah, email juga kanal pemulihan akun, jadi kepemilikan email harus dibuktikan.
+- **Keputusan:**
+  1. Register tidak lagi langsung memberi akses: `email_verified=false`, tanpa token, dan link verifikasi dikirim (sekali pakai, berlaku 24 jam).
+  2. `POST /auth/login` membalas **403** dengan `errors.email_verified=false` selama belum verifikasi; aplikasi menampilkan layar "cek email" + tombol kirim ulang.
+  3. `POST /auth/verify-email` dan `POST /auth/verify-email/resend` (balasan selalu generik, token lama dibatalkan saat kirim ulang).
+  4. Akun Google dianggap terverifikasi (Google sudah memverifikasi email); akun lama di-backfill `true` supaya tidak ada yang terkunci.
+  5. Rotasi refresh token juga menolak akun belum terverifikasi (pertahanan berlapis).
+- **Konsekuensi:** SMTP menjadi **wajib** di production — dengan `SMTP_HOST` kosong, `NoopMailer` aktif dan link tidak pernah terkirim, sehingga pendaftar tidak bisa login. Kegagalan kirim hanya dicatat di log; user memakai endpoint resend.
+

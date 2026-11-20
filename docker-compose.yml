@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Diisi CI sebelum build agar `stoodify version` menunjukkan SHA yang jalan.
+        VERSION: ${APP_VERSION:-dev}
+        COMMIT: ${APP_COMMIT:-unknown}
+        BUILD_DATE: ${APP_BUILD_DATE:-unknown}
     container_name: stoodify-backend
     restart: unless-stopped
     ports:
@@ -19,6 +24,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Backup database (stoodify db:backup) harus bertahan walau container di-recreate.
+      - ./backups:/app/backups
     networks:
       - stoodify-network
 

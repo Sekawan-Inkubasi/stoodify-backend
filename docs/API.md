@@ -43,7 +43,16 @@ POST /auth/register
 }
 ```
 
-Semua field **wajib**: `name`, `email`, `school`, `grade` (7–13), `major`, `password`, `confirm_password`. Backend adalah acuan kontrak — form daftar di aplikasi wajib menyediakan `school`, `grade`, dan `major`.
+Semua field **wajib**: `name`, `email`, `school`, `grade` (10-13), `major`, `password`, `confirm_password`. Backend adalah acuan kontrak — form daftar di aplikasi wajib menyediakan `school`, `grade`, dan `major`.
+
+**Akun baru belum aktif.** Backend mengirim link verifikasi ke email (berlaku 24 jam). Sebelum diklik, `POST /auth/login` membalas **403**:
+
+```json
+{ "success": false, "message": "Email belum diverifikasi. Cek inbox atau minta kirim ulang verifikasi.",
+  "errors": { "email_verified": "false" } }
+```
+
+Aplikasi menampilkan layar "Cek email kamu" + tombol **Kirim ulang**. Registrasi tetap **201** (data = objek user dengan `email_verified: false`), tanpa token.
 
 Sukses → **201**:
 
@@ -77,9 +86,17 @@ Sukses → **201**:
 POST /auth/login
 ```
 
+Ada **dua bentuk body** yang diterima endpoint ini:
+
 ```json
 { "email": "liezzar@gmail.com", "password": "rahasia123" }
 ```
+
+```json
+{ "id_token": "<Google ID token>" }
+```
+
+Bila `id_token` dikirim (tidak kosong), backend memakai jalur Google — sama persis dengan `POST /auth/google`. Kalau `id_token` kosong, `email` **dan** `password` wajib ada; tanpa itu dibalas **422** dengan `errors.email` / `errors.password`.
 
 Sukses → **200**:
 
@@ -108,6 +125,8 @@ Sukses → **200**:
 ```
 
 💡 **Catatan keamanan:** `expires_in` = 900 detik (15 menit). Pesan error untuk password salah dan email tidak terdaftar **selalu sama** ("email atau password salah") — ini disengaja, jangan dijadikan pembeda di aplikasi.
+
+Response juga memuat `needs_onboarding` dan `auth_provider`; akun yang email-nya belum diverifikasi dibalas **403** (`errors.email_verified = "false"`), dan akun Google-only dibalas **401** dengan arahan memakai tombol Google.
 
 ### 1.3 Kirim token di tiap request
 
@@ -180,6 +199,112 @@ GET /auth/me
 ```
 
 Sukses → **200** dengan data user (field `password_hash` tidak pernah dikirim).
+
+---
+
+### 1.7 Login / Daftar dengan Google
+
+```
+POST /auth/google
+{ "id_token": "<ID token dari Google Sign-In SDK>" }
+```
+
+Backend **memverifikasi sendiri** token itu (signature, issuer, `aud` = `GOOGLE_CLIENT_ID`, masa berlaku, `email_verified`). Aplikasi tidak perlu mengirim email/nama terpisah — semuanya diambil dari token.
+
+Alur yang terjadi di server:
+
+1. Cari user berdasarkan `google_sub`.
+2. Kalau belum ada, cari berdasarkan email terverifikasi → **auto-link** (akun password lama tetap bisa login dengan password).
+3. Kalau email sudah terhubung ke akun Google lain → `409`.
+4. Kalau belum ada sama sekali → buat akun baru tanpa password, `profile_completed=false`.
+
+Sukses → **200** (login) atau **201** (akun baru):
+
+```json
+{
+  "success": true,
+  "message": "login berhasil",
+  "data": {
+    "access_token": "...", "refresh_token": "...", "token_type": "Bearer", "expires_in": 900,
+    "user": { "id": 12, "email": "siswa@gmail.com", "school": "", "grade": 0, "major": "",
+              "auth_provider": "google", "profile_completed": false },
+    "needs_onboarding": true,
+    "auth_provider": "google"
+  }
+}
+```
+
+`needs_onboarding: true` → aplikasi wajib menampilkan layar **Sekolah / Kelas / Jurusan** sebelum masuk beranda. Token tetap diterbitkan supaya user bisa melanjutkan onboarding kapan pun tanpa login ulang.
+
+Akun Google **tidak punya password**: `POST /auth/login` untuk akun seperti ini dibalas `401 "Akun ini terdaftar lewat Google…"`, dan reset password tidak mengirim email (tetap balasan generik).
+
+### 1.8 Lengkapi profil (onboarding)
+
+```
+PATCH /users/me/onboarding
+{ "school": "SMK Telkom Sidoarjo", "grade": 10, "major": "SIJA" }
+```
+
+Wajib untuk akun Google sebelum memakai fitur AI/statistik. `grade` 10-13. Idempotent — boleh dipanggil ulang untuk memperbarui.
+
+Selama `profile_completed=false`, **seluruh** grup `/api/ai/*` dan `/api/statistics/*` membalas **409** — bukan hanya endpoint generate:
+
+`POST /ai/schedule-recommendations/generate`, `GET /ai/schedule-recommendations`, `POST /ai/schedule-recommendations/undo`, `POST /ai/schedule-recommendations/{id}/accept`, `POST /ai/schedule-recommendations/{id}/reject`, `POST /ai/reschedule`, `POST /ai/material-predictions/generate`, `GET /ai/material-predictions/{subjectId}`, `POST /ai/material-predictions/{id}/feedback`, `POST /ai/chat`, dan `GET /statistics/{overview,weekly,monthly,subjects}`.
+
+```json
+{ "success": false, "message": "Lengkapi profil dulu (sekolah, kelas, jurusan) sebelum memakai fitur ini",
+  "errors": { "profile_completed": "false" } }
+```
+
+Endpoint lain (profil, mapel, jadwal, tugas, sesi belajar, notifikasi) tetap bisa dipakai. Penjadwalan otomatis di latar belakang juga **melewati** akun yang belum lengkap.
+
+---
+
+### 1.9 Verifikasi Email
+
+```
+POST /auth/verify-email
+{ "token": "<token dari link email>" }
+```
+
+Sukses → **200** `{ "email_verified": true }`. Token **sekali pakai**, berlaku **24 jam**; kalau sudah dipakai/kedaluwarsa → **400** dengan pesan yang membedakan keduanya.
+
+```
+POST /auth/verify-email/resend
+{ "email": "siswa@example.com" }
+```
+
+Selalu **200** dengan pesan generik (tidak membocorkan apakah email terdaftar). Kalau email terdaftar dan belum terverifikasi, link baru dikirim dan **token lama dibatalkan**.
+
+Akun Google tidak perlu verifikasi (email sudah diverifikasi Google).
+
+#### Halaman link email (di luar `/api`)
+
+```
+GET /verify-email?token=<token>
+```
+
+Halaman HTML kecil yang dibuka saat user mengeklik link di email. Isinya:
+
+- **token valid** → tombol **Buka Aplikasi Stoodify** + auto-redirect ke `stoodify://verify-email?token=<token>`
+- **kedaluwarsa / sudah dipakai / tidak dikenal** → penjelasan + arahan minta kirim ulang
+
+Halaman ini **tidak** memverifikasi (tidak menandai token terpakai) — verifikasi tetap lewat `POST /api/auth/verify-email` dari aplikasi. Ini disengaja: email client sering *prefetch* link, jadi kalau halaman langsung memverifikasi, token bisa habis sebelum user benar-benar mengekliknya.
+
+Skema deep link diatur lewat `EMAIL_VERIFICATION_DEEPLINK` (default `stoodify://verify-email`).
+
+### 1.10 Ganti password (dua endpoint setara)
+
+```
+POST /auth/password/change
+POST /users/change-password
+```
+
+```json
+{ "current_password": "rahasia123", "new_password": "rahasiaBaru123", "confirm_password": "rahasiaBaru123" }
+```
+
+`old_password` diterima sebagai alias `current_password`. Sukses → **200**; **seluruh sesi lama dicabut** (`token_version` naik, semua refresh token aktif di-revoke), jadi aplikasi harus login ulang.
 
 ---
 

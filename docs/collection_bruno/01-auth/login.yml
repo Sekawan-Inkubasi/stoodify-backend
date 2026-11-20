@@ -21,9 +21,10 @@ http:
       }
 scripts:
   res: |
-    if (res.body && res.body.data && res.body.data.tokens) {
-      bru.setEnvVar('authToken', res.body.data.tokens.access_token);
-      bru.setEnvVar('refreshToken', res.body.data.tokens.refresh_token);
+    // Token ada di data.access_token (bukan data.tokens) — simpan ke environment.
+    if (res.body && res.body.data && res.body.data.access_token) {
+      bru.setEnvVar('authToken', res.body.data.access_token);
+      bru.setEnvVar('refreshToken', res.body.data.refresh_token);
     }
 settings:
   encodeUrl: true
@@ -31,4 +32,6 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: true
-docs: Login pengguna dan menyimpan JWT
+docs: |-
+  Login dengan email+password. Bisa juga kirim {"id_token": "..."} untuk
+  jalur Google (sama dengan POST /auth/google). Akun belum verifikasi -> 403.

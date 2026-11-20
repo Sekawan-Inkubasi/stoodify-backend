@@ -164,6 +164,12 @@ func (ctrl *AIController) RegenerasiOtomatis(userID uint) {
 		log.Printf("planner: user %d tidak ditemukan: %v", userID, err)
 		return
 	}
+	// Akun Google yang belum onboarding belum punya sekolah/kelas/jurusan:
+	// jangan buat jadwal dari data kosong (dan jangan spam log error).
+	if !user.ProfileCompleted {
+		log.Printf("planner: user %d dilewati (profil belum lengkap)", userID)
+		return
+	}
 
 	mulai := time.Now()
 	hasil, err := ctrl.regenerasi(ctx, user, time.Now())
@@ -689,6 +695,7 @@ func (ctrl *AIController) Reschedule(konteks *gin.Context) {
 
 	var pending []migrations.StudySession
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).
+		Preload("Task").Preload("Task.Subject").
 		Where("user_id = ? AND status = ?", user.ID, migrations.SessionPlanned).
 		Find(&pending).Error; err != nil {
 		response.ServerError(konteks, err)
@@ -897,7 +904,8 @@ func parsePredictorResponse(raw json.RawMessage) (hasilPrediksi, bool) {
 	}, true
 }
 
-// kelasRomawi memetakan tingkat kelas (7..13) ke jenjang yang dipakai engine silabus.
+// kelasRomawi memetakan tingkat kelas ke jenjang yang dipakai engine silabus.
+// Kontrak saat ini 10..13; nilai 7..9 tetap dipetakan untuk data lama.
 func kelasRomawi(grade int8) string {
 	switch grade {
 	case 7:

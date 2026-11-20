@@ -2,12 +2,15 @@ package controllers
 
 import (
 	"errors"
+	"log"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"stoodify_backend/internal/googleauth"
 	hashingPassword "stoodify_backend/internal/hashing_password"
 	"stoodify_backend/internal/mailer"
 	"stoodify_backend/internal/response"
@@ -27,6 +30,8 @@ func normalizeEmail(email string) string {
 type AuthController struct {
 	DB     *gorm.DB
 	Mailer mailer.Mailer
+	// Google dipakai LoginGoogle; nil = dibuat otomatis dari GOOGLE_CLIENT_ID.
+	Google *googleauth.Verifier
 }
 
 func NewAuthController(db *gorm.DB) *AuthController {
@@ -40,15 +45,16 @@ type RegisterInput struct {
 	Name            string `json:"name" binding:"required,min=1,max=100"`
 	Email           string `json:"email" binding:"required,email,max=100"`
 	School          string `json:"school" binding:"required,max=150"`
-	Grade           int8   `json:"grade" binding:"required,min=7,max=13"`
+	Grade           int8   `json:"grade" binding:"required,min=10,max=13"`
 	Major           string `json:"major" binding:"required,max=100"`
 	Password        string `json:"password" binding:"required,min=8"`
 	ConfirmPassword string `json:"confirm_password" binding:"required"`
 }
 
 type LoginInput struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	IDToken  string `json:"id_token"`
 }
 
 type RefreshInput struct {
@@ -123,7 +129,24 @@ func (ctrl *AuthController) Register(konteks *gin.Context) {
 		return
 	}
 
-	response.Created(konteks, "registrasi berhasil, sekarang harap login", user)
+	// Kolom email_verified punya DEFAULT true (akun lama & seeder tidak terkunci),
+	// sehingga nilai false harus diset eksplisit setelah INSERT.
+	if err := ctrl.DB.WithContext(konteks.Request.Context()).Model(&migrations.User{}).
+		Where("id = ?", user.ID).Update("email_verified", false).Error; err != nil {
+		response.ServerError(konteks, err)
+		return
+	}
+	user.EmailVerified = false
+
+	if err := ctrl.buatDanKirimVerifikasi(konteks.Request.Context(), user); err != nil {
+		// Akun sudah terbuat; jangan gagalkan registrasi hanya karena email gagal
+		// disiapkan. User bisa memakai /auth/verify-email/resend.
+		log.Printf("registrasi: gagal menyiapkan verifikasi email untuk %s: %v", user.Email, err)
+	}
+
+	// Bentuk response register dipertahankan (data = objek user) agar klien lama
+	// tidak pecah; akun hasil register password selalu profile_completed=true.
+	response.Created(konteks, "registrasi berhasil, cek email untuk verifikasi akun sebelum login", user)
 }
 
 func (ctrl *AuthController) Login(konteks *gin.Context) {
@@ -132,6 +155,19 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 
 	if err := konteks.ShouldBindJSON(&input); err != nil {
 		response.ValidationError(konteks, err)
+		return
+	}
+
+	if strings.TrimSpace(input.IDToken) != "" {
+		ctrl.ProsesLoginGoogle(konteks, strings.TrimSpace(input.IDToken))
+		return
+	}
+
+	if strings.TrimSpace(input.Email) == "" || strings.TrimSpace(input.Password) == "" {
+		response.Fail(konteks, http.StatusUnprocessableEntity, "email dan password wajib diisi", map[string]string{
+			"email":    "email wajib diisi jika tidak menggunakan id_token",
+			"password": "password wajib diisi jika tidak menggunakan id_token",
+		})
 		return
 	}
 
@@ -146,6 +182,20 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 		}
 		hashingPassword.CheckPasswordHash(input.Password, dummyHash)
 		response.Unauthorized(konteks, "email atau password salah")
+		return
+	}
+
+	// Akun yang dibuat lewat Google tidak punya password: arahkan ke tombol Google.
+	if user.AuthProvider == migrations.AuthProviderGoogle || user.PasswordHash == "" {
+		response.Unauthorized(konteks, "Akun ini terdaftar lewat Google. Silakan masuk dengan tombol Google.")
+		return
+	}
+
+	// Belum verifikasi email = belum dianggap punya akun.
+	if !user.EmailVerified {
+		response.Fail(konteks, http.StatusForbidden,
+			"Email belum diverifikasi. Cek inbox atau minta kirim ulang verifikasi.",
+			map[string]string{"email_verified": "false"})
 		return
 	}
 
@@ -166,11 +216,13 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 	}
 
 	response.OK(konteks, "login berhasil", gin.H{
-		"access_token":  access.Token,
-		"refresh_token": refresh.Token,
-		"token_type":    "Bearer",
-		"expires_in":    int(token.AccessTTL.Seconds()),
-		"user":          user,
+		"access_token":     access.Token,
+		"refresh_token":    refresh.Token,
+		"token_type":       "Bearer",
+		"expires_in":       int(token.AccessTTL.Seconds()),
+		"user":             user,
+		"needs_onboarding": user.AuthProvider == migrations.AuthProviderGoogle && !user.ProfileCompleted,
+		"auth_provider":    user.AuthProvider,
 	})
 }
 
@@ -221,6 +273,11 @@ func (ctrl *AuthController) Refresh(konteks *gin.Context) {
 			return errors.New("token_version_mismatch")
 		}
 
+		// Akun yang email-nya belum diverifikasi tidak boleh memperpanjang sesi.
+		if !user.EmailVerified {
+			return errors.New("email_belum_diverifikasi")
+		}
+
 		// 3. Terbitkan access & refresh token baru yang terikat token_version user
 		access, err := token.GenerateAccess(user.ID, userTokenVer)
 		if err != nil {
@@ -249,6 +306,12 @@ func (ctrl *AuthController) Refresh(konteks *gin.Context) {
 	if err != nil {
 		if err.Error() == "token_revoked_or_invalid" || err.Error() == "token_version_mismatch" {
 			response.Unauthorized(konteks, "refresh token sudah tidak berlaku")
+			return
+		}
+		if err.Error() == "email_belum_diverifikasi" {
+			response.Fail(konteks, http.StatusForbidden,
+				"Email belum diverifikasi. Cek inbox atau minta kirim ulang verifikasi.",
+				map[string]string{"email_verified": "false"})
 			return
 		}
 		response.ServerError(konteks, err)
@@ -311,6 +374,12 @@ func (ctrl *AuthController) PasswordResetRequest(konteks *gin.Context) {
 		return
 	}
 	if err == nil {
+		// Akun Google tidak punya password: balasan tetap generik, tapi tidak
+		// membuat token reset dan tidak mengirim email (hindari kebingungan).
+		if user.AuthProvider == migrations.AuthProviderGoogle || user.PasswordHash == "" {
+			response.OK(konteks, genericMsg, nil)
+			return
+		}
 		// Simpan hanya hash token di database dengan masa berlaku 15 menit
 		resetRecord := migrations.PasswordResetToken{
 			UserID:    user.ID,

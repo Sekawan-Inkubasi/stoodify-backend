@@ -57,7 +57,7 @@ type CreateTopicInput struct {
 	Title        string `json:"title" binding:"required,min=1,max=200"`
 	Description  string `json:"description" binding:"omitempty,max=2000"`
 	Order        int    `json:"order"`
-	Grade        int8   `json:"grade" binding:"omitempty,min=7,max=13"`
+	Grade        int8   `json:"grade" binding:"omitempty,min=10,max=13"`
 	Major        string `json:"major" binding:"omitempty,max=100"`
 	Term         int8   `json:"term" binding:"omitempty,min=1,max=4"`
 	EstimatedMin int    `json:"estimated_minutes" binding:"omitempty,min=5,max=1440"`

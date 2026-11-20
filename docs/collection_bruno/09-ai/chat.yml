@@ -1,0 +1,36 @@
+info:
+  name: Chat Assistant
+  type: http
+  seq: 10
+http:
+  method: POST
+  url: "{{baseUrl}}/ai/chat"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: "Content-Type"
+      value: application/json
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{authToken}}"
+  body:
+    type: json
+    data: |
+      {
+        "message": "Rangkum materi integral untukku",
+        "history": [
+          { "role": "user", "content": "Halo" },
+          { "role": "assistant", "content": "Hai! Ada yang bisa kubantu?" }
+        ],
+        "context": { "subject_id": {{subjectId}} }
+      }
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+docs: |-
+  Chatbot asisten belajar (diteruskan ke AI_CHAT_URL).
+  Butuh profil lengkap: 409 bila profile_completed=false.

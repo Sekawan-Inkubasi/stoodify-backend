@@ -45,6 +45,16 @@ func main() {
 		runMigrateFresh(args)
 	case "seed", "db:seed":
 		runSeed(args)
+	case "db:backup", "backup":
+		runBackup(args)
+	case "db:restore", "restore":
+		runRestore(args)
+	case "rollback":
+		runRollback(args)
+	case "doctor", "check":
+		runDoctor(args)
+	case "version", "-v", "--version":
+		runVersion(args)
 	case "help", "-h", "--help", "-help":
 		printHelp()
 	default:
@@ -210,21 +220,38 @@ Usage:
 
 Commands:
   serve          Jalankan HTTP server + scheduler (default)
+  doctor         Periksa kesiapan env, database, dan service AI sebelum deploy
+  version        Tampilkan versi/commit build yang sedang berjalan
   migrate        Jalankan migrasi database (AutoMigrate + index kinerja)
   migrate:fresh  Drop semua tabel lalu migrasi ulang (opsional --seed atau --demo)
   seed           Isi database dengan data sintetis atau akun demo
+  db:backup      Backup database ke ./backups (pg_dump, gzip) + rotasi otomatis
+  db:restore     Pulihkan database dari file backup
+  rollback       Kembalikan database ke backup terakhir (data), lalu selaraskan skema
   help           Tampilkan bantuan ini
 
 Global flags:
   -h, --help     Tampilkan bantuan untuk command tertentu
 
+Alur aman di server (DevOps):
+  1. stoodify doctor                 # pastikan env & DB siap (gagal = jangan deploy)
+  2. stoodify db:backup              # snapshot sebelum perubahan berisiko
+  3. stoodify migrate                # terapkan skema baru
+  4. stoodify rollback --list        # lihat titik pemulihan yang tersedia
+     stoodify rollback --step=1      # pulihkan data terakhir (production perlu --force)
+
+Rollback KODE (bukan data) tetap lewat CI:
+  git reset --hard <sha-sebelumnya> && docker compose up -d --build app
+
 Contoh:
   stoodify serve
+  stoodify doctor --json
   stoodify migrate
-  stoodify migrate:fresh
   stoodify migrate:fresh --demo
   stoodify seed --demo
   stoodify seed --users=50 --tasks=40 --reset
+  stoodify db:backup --keep=14
+  stoodify db:restore --latest --force
 
 Akun demo:
   naufal@student.id / password123

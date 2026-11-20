@@ -1,6 +1,6 @@
 # Stoodify Backend
 
-REST API Stoodify — asisten belajar harian berbasis kecerdasan buatan (AI) untuk siswa SMP, SMA, dan SMK di Indonesia. Dibangun dengan performa tinggi menggunakan Golang, Gin Web Framework, GORM, dan PostgreSQL (Supabase / Neon).
+REST API Stoodify — asisten belajar harian berbasis kecerdasan buatan (AI) untuk siswa SMA dan SMK (kelas 10–13) di Indonesia. Dibangun dengan performa tinggi menggunakan Golang, Gin Web Framework, GORM, dan PostgreSQL (Supabase / Neon).
 
 ---
 
@@ -29,6 +29,12 @@ Kompilasi otomatis ke cache temporer Go saat perintah dipanggil:
 go run . serve                # Menjalankan server API pada port default (8080)
 go run . seed --demo          # Menanamkan akun demo Muhammad Naufal Rafa Al As'ad
 go run . migrate:fresh --demo # Hapus semua tabel, migrasi ulang, langsung isi akun demo
+
+# Operasional (lihat docs/DEPLOY.md untuk detail)
+go run . doctor               # cek env, database, dan service AI sebelum deploy
+go run . version              # versi/commit yang sedang berjalan
+go run . db:backup            # backup database ke ./backups (gzip + rotasi)
+go run . rollback --list      # lihat titik pemulihan data yang tersedia
 ```
 
 #### Cara B: Menggunakan Binary File Hasil Kompilasi
@@ -108,7 +114,7 @@ stoodify-backend/
 Semua developer dan AI Agent yang berkontribusi pada repository ini **sangat disarankan membaca dokumen-dokumen berikut** sesuai fokus tugasnya:
 
 ### 🌟 Rekomendasi Utama (Wajib Dibaca Pertama Kali)
-1. **[`docs/CONTEXT.md`](docs/CONTEXT.md)**: **Konteks Bisnis & Target Pengguna.** Memahami visi Stoodify untuk siswa SMP/SMA/SMK Indonesia, alur demonstrasi, dan timeline inkubasi.
+1. **[`docs/CONTEXT.md`](docs/CONTEXT.md)**: **Konteks Bisnis & Target Pengguna.** Memahami visi Stoodify untuk siswa SMA/SMK (kelas 10–13) Indonesia, alur demonstrasi, dan timeline inkubasi.
 2. **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**: **Arsitektur Sistem & Domain Boundaries.** Memahami pemisahan layer, multi-tenant isolation berbasis `user_id`, serta siklus hidup request.
 3. **[`docs/API.md`](docs/API.md)**: **Katalog Lengkap REST API.** Kontrak endpoint publik, header Authorization Bearer, format payload, upload avatar, dan respons JSON.
 4. **[`docs/AI_CONTRACT.md`](docs/AI_CONTRACT.md)**: **Kontrak Integrasi AI Engine.** Spesifikasi payload bridge antara backend Go dan microservice Python FastAPI (`stoodify-ai-1`) untuk generate jadwal belajar (`/schedule`) dan prediksi materi (`/predict`), termasuk aturan error/timeout/rate limit. Backend tidak punya fallback lokal.
