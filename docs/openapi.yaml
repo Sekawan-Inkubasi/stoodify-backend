@@ -475,9 +475,8 @@ paths:
           application/json:
             schema:
               type: object
-              required:
-              - email
-              - password
+              description: Kirim email+password, ATAU id_token (Google). Bila id_token
+                diisi, email/password tidak diperlukan.
               properties:
                 email:
                   type: string
@@ -487,15 +486,21 @@ paths:
                   type: string
                   format: password
                   example: rahasia123
+                id_token:
+                  type: string
+                  description: Google ID token; memakai jalur login Google yang sama
+                    dengan POST /auth/google
       responses:
         '200':
           description: Login berhasil, token diberikan
         '400':
           description: Body request tidak valid
         '401':
-          description: Email atau password salah
+          description: Email atau password salah; atau akun hanya terdaftar lewat Google
         '403':
           description: Email belum diverifikasi (errors.email_verified = "false")
+        '422':
+          description: id_token kosong dan email/password tidak lengkap
   /auth/verify-email:
     post:
       tags:

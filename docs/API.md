@@ -86,9 +86,17 @@ Sukses → **201**:
 POST /auth/login
 ```
 
+Ada **dua bentuk body** yang diterima endpoint ini:
+
 ```json
 { "email": "liezzar@gmail.com", "password": "rahasia123" }
 ```
+
+```json
+{ "id_token": "<Google ID token>" }
+```
+
+Bila `id_token` dikirim (tidak kosong), backend memakai jalur Google — sama persis dengan `POST /auth/google`. Kalau `id_token` kosong, `email` **dan** `password` wajib ada; tanpa itu dibalas **422** dengan `errors.email` / `errors.password`.
 
 Sukses → **200**:
 
@@ -117,6 +125,8 @@ Sukses → **200**:
 ```
 
 💡 **Catatan keamanan:** `expires_in` = 900 detik (15 menit). Pesan error untuk password salah dan email tidak terdaftar **selalu sama** ("email atau password salah") — ini disengaja, jangan dijadikan pembeda di aplikasi.
+
+Response juga memuat `needs_onboarding` dan `auth_provider`; akun yang email-nya belum diverifikasi dibalas **403** (`errors.email_verified = "false"`), dan akun Google-only dibalas **401** dengan arahan memakai tombol Google.
 
 ### 1.3 Kirim token di tiap request
 

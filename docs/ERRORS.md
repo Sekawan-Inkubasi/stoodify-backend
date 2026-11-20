@@ -74,3 +74,11 @@ lokal, jalankan `go run . serve` dengan `APP_ENV=development` (default).
 
 **Catatan:** port 465 (implicit TLS) belum didukung — `net/smtp.SendMail` hanya STARTTLS (587/25).
 
+## 8. Skrip Bruno Tidak Menyimpan Token (authToken Kosong)
+
+**Gejala:** request setelah Login mengembalikan 401, variabel `authToken` tetap kosong.
+
+**Penyebab:** skrip `res` membaca `res.body.data.tokens.access_token`, padahal response login menaruh token di `res.body.data.access_token`.
+
+**Perbaikan:** skrip pada `01-auth/login.yml` sudah memakai jalur yang benar; kalau menambah request auth baru, ikuti pola itu (`data.access_token` / `data.refresh_token`).
+

@@ -186,3 +186,18 @@ func TestGoogleLoginEmailSudahTerverifikasi(t *testing.T) {
 	require.NoError(t, configDB().Where("email = ?", "google-verif@example.com").First(&user).Error)
 	assert.True(t, user.EmailVerified, "email dari Google sudah terverifikasi")
 }
+
+// Login tanpa id_token harus tetap menuntut email+password (422, bukan 400).
+func TestLoginTanpaIDTokenDanTanpaPassword(t *testing.T) {
+	r, _ := setupVerifikasi(t)
+
+	w := postJSONAuth(r, "/auth/login", `{"email":"siapa@example.com"}`)
+	require.Equal(t, http.StatusUnprocessableEntity, w.Code, w.Body.String())
+
+	var resp struct {
+		Errors map[string]string `json:"errors"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp.Errors, "email")
+	assert.Contains(t, resp.Errors, "password")
+}
