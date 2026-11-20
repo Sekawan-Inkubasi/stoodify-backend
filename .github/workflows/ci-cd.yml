@@ -56,124 +56,47 @@ jobs:
         run: |
           docker build -t stoodify-backend:test .
 
-  deploy:
-    name: Deploy to VPS
+  build-and-push:
+    name: Build & Push Image (ghcr.io)
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    env:
-      VPS_HOST: ${{ secrets.VPS_HOST }}
-      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - name: Check VPS Secrets
-        id: check_secrets
-        run: |
-          if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_KEY" ]; then
-            echo "Secrets VPS_HOST or VPS_SSH_KEY not provided. Skipping deploy."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Deploy via SSH
-        if: steps.check_secrets.outputs.skip != 'true'
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME || 'root' }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_SSH_PORT || '20220' }}
-          script_stop: true
-          script: |
-            set -euo pipefail
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-            TARGET_DIR="${{ secrets.VPS_TARGET_DIR || '/root/stoodify-backend' }}"
-            echo "Deploying to: $TARGET_DIR"
+      - name: Build metadata
+        id: meta
+        run: |
+          IMAGE_NAME="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-            if [ ! -d "$TARGET_DIR" ]; then
-              echo "Error: Directory $TARGET_DIR does not exist."
-              exit 1
-            fi
-
-            cd "$TARGET_DIR"
-
-            # --- Preflight 1: .env wajib ada di server (tidak di-commit) ---
-            if [ ! -f .env ]; then
-              echo "ABORT: .env tidak ditemukan di $TARGET_DIR. Deploy dibatalkan, container lama tetap jalan."
-              exit 1
-            fi
-
-            # --- Preflight 2: variabel wajib harus terisi ---
-            # Backend menolak start kalau AI_SCHEDULER_URL / AI_PREDICTOR_URL kosong
-            # (bridge-only), jadi deploy dicek dulu supaya produksi tidak ikut mati.
-            MISSING=""
-            for key in POSTGRES_URL JWT_SECRET AI_SCHEDULER_URL AI_PREDICTOR_URL; do
-              if ! grep -qE "^[[:space:]]*${key}=[^[:space:]]" .env; then
-                MISSING="${MISSING} ${key}"
-              fi
-            done
-            if [ -n "$MISSING" ]; then
-              echo "ABORT: variabel wajib belum diisi di .env:${MISSING}"
-              echo "Deploy dibatalkan sebelum menyentuh container yang sedang jalan."
-              exit 1
-            fi
-
-            # --- Simpan commit aktif untuk rollback ---
-            PREV_SHA="$(git rev-parse HEAD)"
-            echo "Commit aktif sebelum deploy: $PREV_SHA"
-
-            # --- Preflight 3: port host harus bebas ---
-            # Kalau ada proses/container lain yang memegang PORT, `docker compose up`
-            # akan menghancurkan container lama lalu gagal start -> produksi mati
-            # tanpa rollback (set -euo pipefail menghentikan skrip lebih dulu).
-            HOST_PORT="$(grep -E '^[[:space:]]*PORT=' .env | tail -1 | cut -d= -f2 | tr -d '[:space:]')"
-            HOST_PORT="${HOST_PORT:-8080}"
-            if docker ps --format '{{.Names}} {{.Ports}}' | grep -q "0.0.0.0:${HOST_PORT}->"; then
-              PEMEGANG="$(docker ps --format '{{.Names}} {{.Ports}}' | grep "0.0.0.0:${HOST_PORT}->")"
-              if ! echo "$PEMEGANG" | grep -q '^stoodify-backend '; then
-                echo "ABORT: port ${HOST_PORT} dipakai container lain:"
-                echo "  $PEMEGANG"
-                echo "Deploy dibatalkan sebelum menyentuh container yang sedang jalan."
-                exit 1
-              fi
-            fi
-
-            git fetch origin main
-            git reset --hard origin/main
-            echo "Commit setelah update: $(git rev-parse HEAD)"
-
-            # --- Deploy dengan rollback otomatis untuk SEMUA kegagalan ---
-            # Sebelumnya rollback hanya jalan saat health check gagal. Padahal
-            # `docker compose up` sudah menghancurkan container lama: kalau langkah
-            # itu sendiri gagal (port bentrok, image rusak), produksi tertinggal mati.
-            rollback() {
-              echo "Deploy gagal. Rollback ke commit $PREV_SHA"
-              git reset --hard "$PREV_SHA" || true
-              docker compose up -d --build app || echo "PERINGATAN: rollback juga gagal, perlu tindakan manual di server."
-              echo "Rollback selesai. Deploy ditandai gagal."
-            }
-
-            if ! docker compose up -d --build app; then
-              rollback
-              exit 1
-            fi
-
-            # --- Health check: container crash-loop (mis. config salah) tidak lolos ---
-            HEALTHY=0
-            for _ in $(seq 1 20); do
-              if docker compose exec -T app wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1; then
-                HEALTHY=1
-                break
-              fi
-              sleep 3
-            done
-
-            if [ "$HEALTHY" != "1" ]; then
-              echo "Health check GAGAL setelah deploy. Menampilkan log terakhir:"
-              docker compose logs --tail 60 app || true
-              rollback
-              exit 1
-            fi
-
-            docker image prune -f
-            echo "Health check OK. Deployment completed successfully!"
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_name }}:latest
+            ${{ steps.meta.outputs.image_name }}:${{ github.sha }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
