@@ -14,6 +14,8 @@ services:
     environment:
       - PORT=8080
       - TZ=Asia/Jakarta
+      # Production: detail error internal tidak dikirim ke client.
+      - APP_ENV=production
     depends_on:
       db:
         condition: service_healthy

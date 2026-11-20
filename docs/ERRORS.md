@@ -23,3 +23,35 @@ Daftar masalah yang pernah terjadi dan solusi terverifikasi agar agen tidak meng
 - **Gejala**: Siswa kelas 7, 8, atau 9 gagal mendaftar dengan pesan validation error.
 - **Penyebab**: Tag validasi sebelumnya adalah `min=10`.
 - **Solusi**: Sudah dilonggarkan menjadi `min=7,max=13` untuk mengakomodasi siswa jenjang SMP, SMA, dan SMK 4 tahun.
+
+## 5. Pesan Error Validasi Membocorkan Nama Struct Go
+
+**Gejala:** client menerima pesan seperti
+`Key: 'RegisterInput.School' Error:Field validation for 'School' failed on the 'required' tag`.
+
+**Penyebab:** `response.ValidationError` mengirim `err.Error()` mentah dari validator.
+
+**Perilaku sekarang:**
+
+| Environment | `message` | `errors` |
+| --- | --- | --- |
+| development (default) | "Body request tidak valid, harap isi formulir dengan benar" | pesan per field **+** `body` berisi error mentah untuk debugging |
+| production (`APP_ENV=production`) | "Data yang dikirim belum lengkap atau tidak valid" | **hanya** pesan per field bahasa Indonesia; tanpa nama struct/tag/path |
+
+Contoh production:
+
+```json
+{
+  "success": false,
+  "message": "Data yang dikirim belum lengkap atau tidak valid",
+  "errors": { "school": "wajib diisi", "grade": "wajib diisi", "major": "wajib diisi" }
+}
+```
+
+Nama field mengikuti tag `json` (snake_case), didaftarkan sekali di `routes.SetupRoutes`
+lewat `response.DaftarkanNamaFieldJSON`. Jangan menambahkan `err.Error()` mentah ke response
+baru — selalu pakai `response.ValidationError` / `response.ServerError`.
+
+**Catatan penting:** `docker-compose.yml` menetapkan `APP_ENV=production`, jadi container
+produksi selalu menyembunyikan detail internal. Untuk melihat detail saat debugging di
+lokal, jalankan `go run . serve` dengan `APP_ENV=development` (default).

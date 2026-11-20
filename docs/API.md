@@ -35,13 +35,16 @@ POST /auth/register
 {
   "name": "Aliezzar",
   "email": "liezzar@gmail.com",
+  "password": "rahasia123",
+  "confirm_password": "rahasia123",
   "school": "SMK TELKOM SIDOARJO",
   "grade": 10,
-  "major": "Teknik Komunikasi Jaringan",
-  "password": "rahasia123",
-  "confirm_password": "rahasia123"
+  "major": "Teknik Komunikasi Jaringan"
 }
 ```
+
+**Wajib:** `name`, `email`, `password`, `confirm_password`.
+**Opsional:** `school`, `grade` (7–13), `major` — layar daftar mobile hanya meminta tiga field pertama; sisanya dilengkapi lewat `PATCH /users/me` setelah login.
 
 Sukses → **201**:
 
@@ -194,6 +197,15 @@ Error:
 ```json
 { "success": false, "message": "pesan", "errors": { "field": "alasan" } }
 ```
+
+**Error validasi (400):** `errors` berisi pesan per field dalam bahasa Indonesia, memakai nama field JSON.
+
+```json
+{ "success": false, "message": "Data yang dikirim belum lengkap atau tidak valid",
+  "errors": { "school": "wajib diisi", "grade": "wajib diisi" } }
+```
+
+Di **production** detail internal (nama struct Go, tag validator) tidak pernah dikirim; di **development** ditambah `errors.body` berisi error mentah untuk debugging.
 
 **Kode status yang umum:**
 

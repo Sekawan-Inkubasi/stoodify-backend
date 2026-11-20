@@ -29,6 +29,16 @@ AutoMigrate + index dijalankan saat boot, jadi deploy pertama langsung membuat t
 4. Deploy. Health check: pakai path `/health` (membalas `200 {"status":"healthy","service":"stoodify-backend"}` tanpa auth).
 5. Endpoint `/api/*` butuh token; jangan pakai endpoint ber-auth sebagai health check (akan selalu 401).
 
+## Variabel Environment Penting
+
+| Variabel | Nilai produksi | Efek |
+| --- | --- | --- |
+| `APP_ENV` | `production` | Menyembunyikan detail error internal (nama struct/tag validator) dari client; `errors` tetap berisi pesan per field |
+| `TRUSTED_PROXIES` | IP/CIDR reverse proxy | Header XFF hanya dipercaya dari proxy ini (rate limit per IP benar) |
+| `AI_SCHEDULER_URL`, `AI_PREDICTOR_URL` | URL service AI | Wajib; `serve` gagal start bila kosong |
+
+`docker-compose.yml` sudah menetapkan `APP_ENV=production` untuk container produksi.
+
 ## Render
 
 - Environment: **Docker**
