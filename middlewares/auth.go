@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -83,4 +84,26 @@ func CurrentUser(konteks *gin.Context) (migrations.User, bool) {
 func MustUser(konteks *gin.Context) migrations.User {
 	user, _ := CurrentUser(konteks)
 	return user
+}
+
+// RequireProfileComplete menolak fitur yang butuh data sekolah/kelas/jurusan
+// selama akun (biasanya hasil login Google) belum melengkapi profilnya.
+// 409 dipakai supaya aplikasi bisa membedakan "belum lengkap" dari "tidak berhak".
+func RequireProfileComplete() gin.HandlerFunc {
+	return func(konteks *gin.Context) {
+		user, ok := CurrentUser(konteks)
+		if !ok {
+			response.Unauthorized(konteks, "token tidak valid")
+			konteks.Abort()
+			return
+		}
+		if !user.ProfileCompleted {
+			response.Fail(konteks, http.StatusConflict,
+				"Lengkapi profil dulu (sekolah, kelas, jurusan) sebelum memakai fitur ini",
+				map[string]string{"profile_completed": "false"})
+			konteks.Abort()
+			return
+		}
+		konteks.Next()
+	}
 }

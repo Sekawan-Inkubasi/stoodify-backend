@@ -48,7 +48,7 @@ func rolloverHarian(db *gorm.DB, sekarang time.Time, terakhir string, picu func(
 	var users []migrations.User
 	batas := sekarang.AddDate(0, 0, -30)
 	if err := db.Model(&migrations.User{}).
-		Where("updated_at >= ?", batas).
+		Where("updated_at >= ? AND profile_completed = ?", batas, true).
 		Order("updated_at DESC").Limit(500).Find(&users).Error; err != nil {
 		log.Printf("rollover: gagal mengambil daftar user: %v", err)
 		return terakhir

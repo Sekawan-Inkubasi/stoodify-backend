@@ -12,3 +12,9 @@ Daftar istilah domain khusus yang digunakan di seluruh codebase Stoodify.
 - **AI Bridge**: Pola integrasi backend dengan service AI eksternal — backend hanya mengirim konteks dan meneruskan hasil/error, tanpa membuat keputusan cerdas sendiri.
 - **Rate-limit pass-through**: `429`/`503` beserta header `Retry-After` dan pesan dari service AI dikembalikan apa adanya ke klien; status lain dipetakan menjadi `502`.
 - **OpenCollection**: Standar spesifikasi terbuka file API client (versi 1.0.0) berbasis YAML yang digunakan oleh Bruno v4+.
+
+## Google Sub (`google_sub`)
+Klaim `sub` dari Google ID token — ID unik dan stabil per akun Google. Dipakai sebagai kunci identitas OAuth (bukan email, karena email bisa berubah). Kosong berarti akun tidak terhubung ke Google.
+
+## Onboarding Profil (`profile_completed`)
+Status kelengkapan sekolah/kelas/jurusan. Akun hasil login Google dibuat dengan `false`; selama `false`, endpoint AI dan statistik membalas `409` sampai `PATCH /users/me/onboarding` diisi. Penjadwalan otomatis di latar belakang melewati akun ini.

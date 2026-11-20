@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"stoodify_backend/internal/googleauth"
 	hashingPassword "stoodify_backend/internal/hashing_password"
 	"stoodify_backend/internal/mailer"
 	"stoodify_backend/internal/response"
@@ -27,6 +28,8 @@ func normalizeEmail(email string) string {
 type AuthController struct {
 	DB     *gorm.DB
 	Mailer mailer.Mailer
+	// Google dipakai LoginGoogle; nil = dibuat otomatis dari GOOGLE_CLIENT_ID.
+	Google *googleauth.Verifier
 }
 
 func NewAuthController(db *gorm.DB) *AuthController {
@@ -123,6 +126,8 @@ func (ctrl *AuthController) Register(konteks *gin.Context) {
 		return
 	}
 
+	// Bentuk response register dipertahankan (data = objek user) agar klien lama
+	// tidak pecah; akun hasil register password selalu profile_completed=true.
 	response.Created(konteks, "registrasi berhasil, sekarang harap login", user)
 }
 
@@ -149,6 +154,12 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 		return
 	}
 
+	// Akun yang dibuat lewat Google tidak punya password: arahkan ke tombol Google.
+	if user.AuthProvider == migrations.AuthProviderGoogle || user.PasswordHash == "" {
+		response.Unauthorized(konteks, "Akun ini terdaftar lewat Google. Silakan masuk dengan tombol Google.")
+		return
+	}
+
 	if !hashingPassword.CheckPasswordHash(input.Password, user.PasswordHash) {
 		response.Unauthorized(konteks, "email atau password salah")
 		return
@@ -166,11 +177,13 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 	}
 
 	response.OK(konteks, "login berhasil", gin.H{
-		"access_token":  access.Token,
-		"refresh_token": refresh.Token,
-		"token_type":    "Bearer",
-		"expires_in":    int(token.AccessTTL.Seconds()),
-		"user":          user,
+		"access_token":     access.Token,
+		"refresh_token":    refresh.Token,
+		"token_type":       "Bearer",
+		"expires_in":       int(token.AccessTTL.Seconds()),
+		"user":             user,
+		"needs_onboarding": user.AuthProvider == migrations.AuthProviderGoogle && !user.ProfileCompleted,
+		"auth_provider":    user.AuthProvider,
 	})
 }
 
@@ -311,6 +324,12 @@ func (ctrl *AuthController) PasswordResetRequest(konteks *gin.Context) {
 		return
 	}
 	if err == nil {
+		// Akun Google tidak punya password: balasan tetap generik, tapi tidak
+		// membuat token reset dan tidak mengirim email (hindari kebingungan).
+		if user.AuthProvider == migrations.AuthProviderGoogle || user.PasswordHash == "" {
+			response.OK(konteks, genericMsg, nil)
+			return
+		}
 		// Simpan hanya hash token di database dengan masa berlaku 15 menit
 		resetRecord := migrations.PasswordResetToken{
 			UserID:    user.ID,

@@ -235,6 +235,8 @@ func setupAITestDB(t *testing.T) *gorm.DB {
 		&migrations.StudySession{},
 		&migrations.MaterialPrediction{},
 		&migrations.ScheduleSnapshot{},
+		&migrations.RefreshToken{},
+		&migrations.PasswordResetToken{},
 	))
 	config.DB = db
 

@@ -27,6 +27,9 @@ variables:
   - name: sessionId
     value: 1
     description: Sample Study Session ID
+  - name: googleIdToken
+    value: 
+    description: ID token dari Google Sign-In (untuk request Login Google)
   - name: topicId
     value: 1
     description: Sample Curriculum Topic ID

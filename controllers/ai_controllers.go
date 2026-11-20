@@ -164,6 +164,12 @@ func (ctrl *AIController) RegenerasiOtomatis(userID uint) {
 		log.Printf("planner: user %d tidak ditemukan: %v", userID, err)
 		return
 	}
+	// Akun Google yang belum onboarding belum punya sekolah/kelas/jurusan:
+	// jangan buat jadwal dari data kosong (dan jangan spam log error).
+	if !user.ProfileCompleted {
+		log.Printf("planner: user %d dilewati (profil belum lengkap)", userID)
+		return
+	}
 
 	mulai := time.Now()
 	hasil, err := ctrl.regenerasi(ctx, user, time.Now())

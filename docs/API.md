@@ -183,6 +183,64 @@ Sukses → **200** dengan data user (field `password_hash` tidak pernah dikirim)
 
 ---
 
+### 1.7 Login / Daftar dengan Google
+
+```
+POST /auth/google
+{ "id_token": "<ID token dari Google Sign-In SDK>" }
+```
+
+Backend **memverifikasi sendiri** token itu (signature, issuer, `aud` = `GOOGLE_CLIENT_ID`, masa berlaku, `email_verified`). Aplikasi tidak perlu mengirim email/nama terpisah — semuanya diambil dari token.
+
+Alur yang terjadi di server:
+
+1. Cari user berdasarkan `google_sub`.
+2. Kalau belum ada, cari berdasarkan email terverifikasi → **auto-link** (akun password lama tetap bisa login dengan password).
+3. Kalau email sudah terhubung ke akun Google lain → `409`.
+4. Kalau belum ada sama sekali → buat akun baru tanpa password, `profile_completed=false`.
+
+Sukses → **200** (login) atau **201** (akun baru):
+
+```json
+{
+  "success": true,
+  "message": "login berhasil",
+  "data": {
+    "access_token": "...", "refresh_token": "...", "token_type": "Bearer", "expires_in": 900,
+    "user": { "id": 12, "email": "siswa@gmail.com", "school": "", "grade": 0, "major": "",
+              "auth_provider": "google", "profile_completed": false },
+    "needs_onboarding": true,
+    "auth_provider": "google"
+  }
+}
+```
+
+`needs_onboarding: true` → aplikasi wajib menampilkan layar **Sekolah / Kelas / Jurusan** sebelum masuk beranda. Token tetap diterbitkan supaya user bisa melanjutkan onboarding kapan pun tanpa login ulang.
+
+Akun Google **tidak punya password**: `POST /auth/login` untuk akun seperti ini dibalas `401 "Akun ini terdaftar lewat Google…"`, dan reset password tidak mengirim email (tetap balasan generik).
+
+### 1.8 Lengkapi profil (onboarding)
+
+```
+PATCH /users/me/onboarding
+{ "school": "SMK Telkom Sidoarjo", "grade": 10, "major": "SIJA" }
+```
+
+Wajib untuk akun Google sebelum memakai fitur AI/statistik. `grade` 7–13. Idempotent — boleh dipanggil ulang untuk memperbarui.
+
+Selama `profile_completed=false`, endpoint berikut membalas **409**:
+
+`POST /ai/schedule-recommendations/generate`, `POST /ai/reschedule`, `POST /ai/chat`, `POST /ai/material-predictions/generate`, dan seluruh `GET /statistics/*`.
+
+```json
+{ "success": false, "message": "Lengkapi profil dulu (sekolah, kelas, jurusan) sebelum memakai fitur ini",
+  "errors": { "profile_completed": "false" } }
+```
+
+Endpoint lain (profil, mapel, jadwal, tugas, sesi belajar, notifikasi) tetap bisa dipakai. Penjadwalan otomatis di latar belakang juga **melewati** akun yang belum lengkap.
+
+---
+
 ## 2. Format Response (semua endpoint)
 
 Sukses:

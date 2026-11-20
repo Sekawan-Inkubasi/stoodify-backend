@@ -87,6 +87,28 @@ components:
           - teacher
           - admin
           example: student
+        school:
+          type: string
+          example: SMK Telkom Sidoarjo
+        grade:
+          type: integer
+          minimum: 0
+          maximum: 13
+          description: 0 berarti belum diisi (akun Google yang belum onboarding)
+          example: 10
+        major:
+          type: string
+          example: SIJA
+        auth_provider:
+          type: string
+          enum:
+          - password
+          - google
+          example: password
+        profile_completed:
+          type: boolean
+          description: false = akun Google yang belum mengisi sekolah/kelas/jurusan
+          example: true
         created_at:
           type: string
           format: date-time
@@ -468,6 +490,40 @@ paths:
           description: Body request tidak valid
         '401':
           description: Email atau password salah
+  /auth/google:
+    post:
+      tags:
+      - Auth
+      summary: Login / daftar dengan Google
+      description: |
+        Menukar Google ID token (dari Google Sign-In SDK) menjadi token aplikasi.
+        Backend memverifikasi signature, issuer, audience, exp, dan email_verified.
+        Akun baru dibuat tanpa password dengan profile_completed=false.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - id_token
+              properties:
+                id_token:
+                  type: string
+                  description: ID token dari Google Sign-In SDK (bukan access token)
+      responses:
+        '200':
+          description: Login berhasil; cek needs_onboarding pada data
+        '201':
+          description: Akun baru dibuat; needs_onboarding bernilai true
+        '400':
+          description: Body tidak valid
+        '401':
+          description: Token Google tidak valid / kedaluwarsa / email belum terverifikasi
+        '409':
+          description: Email sudah terhubung ke akun Google lain
+        '503':
+          description: GOOGLE_CLIENT_ID belum dikonfigurasi di server
   /auth/refresh:
     post:
       tags:
@@ -554,6 +610,41 @@ paths:
       responses:
         '200':
           description: Profil diperbarui
+  /users/me/onboarding:
+    patch:
+      tags:
+      - Users
+      summary: Lengkapi profil (sekolah, kelas, jurusan)
+      description: Wajib untuk akun Google sebelum memakai fitur AI/statistik. Idempotent.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - school
+              - grade
+              - major
+              properties:
+                school:
+                  type: string
+                  example: SMK Telkom Sidoarjo
+                grade:
+                  type: integer
+                  minimum: 7
+                  maximum: 13
+                  example: 10
+                major:
+                  type: string
+                  example: SIJA
+      responses:
+        '200':
+          description: Profil lengkap, fitur belajar terbuka
+        '400':
+          description: Input tidak valid (grade harus 7-13)
   /users/me/preferences:
     get:
       tags:

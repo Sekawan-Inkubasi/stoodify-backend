@@ -49,18 +49,31 @@ type Base struct {
 
 // ==================== USER & PREFERENCES ====================
 
+// Nilai kolom users.auth_provider.
+const (
+	AuthProviderPassword = "password"
+	AuthProviderGoogle   = "google"
+)
+
 type User struct {
 	Base
-	Name         string          `gorm:"not null" json:"name"`
-	Email        string          `gorm:"uniqueIndex;not null" json:"email"`
-	PasswordHash string          `gorm:"column:password_hash;not null" json:"-"`
-	Role         string          `gorm:"default:student" json:"role"`
-	School       string          `gorm:"type:varchar(150);" json:"school"`
-	Grade        int8            `gorm:"type:smallint" json:"grade"`
-	Major        string          `gorm:"type:varchar(100)" json:"major"`
-	AvatarURL    string          `gorm:"type:varchar(255)" json:"avatar_url"`
-	TokenVersion int             `gorm:"default:1;not null" json:"-"`
-	Preferences  *UserPreference `gorm:"foreignKey:UserID" json:"preferences,omitempty"`
+	Name         string `gorm:"not null" json:"name"`
+	Email        string `gorm:"uniqueIndex;not null" json:"email"`
+	PasswordHash string `gorm:"column:password_hash;not null" json:"-"`
+	Role         string `gorm:"default:student" json:"role"`
+	School       string `gorm:"type:varchar(150);" json:"school"`
+	Grade        int8   `gorm:"type:smallint" json:"grade"`
+	Major        string `gorm:"type:varchar(100)" json:"major"`
+	AvatarURL    string `gorm:"type:varchar(255)" json:"avatar_url"`
+	// GoogleSub adalah klaim `sub` dari Google (stabil, tidak berubah walau email berubah).
+	// Kosong = akun tidak terhubung ke Google.
+	GoogleSub string `gorm:"column:google_sub;type:varchar(255);uniqueIndex" json:"-"`
+	// AuthProvider: "password" (default) atau "google" (tanpa password).
+	AuthProvider string `gorm:"column:auth_provider;type:varchar(20);not null;default:password" json:"auth_provider"`
+	// ProfileCompleted: false untuk akun Google yang belum mengisi sekolah/kelas/jurusan.
+	ProfileCompleted bool            `gorm:"column:profile_completed;not null;default:true" json:"profile_completed"`
+	TokenVersion     int             `gorm:"default:1;not null" json:"-"`
+	Preferences      *UserPreference `gorm:"foreignKey:UserID" json:"preferences,omitempty"`
 }
 
 type UserPreference struct {
@@ -284,7 +297,19 @@ func Migrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(AllModels()...); err != nil {
 		return err
 	}
+	if err := backfillAkun(db); err != nil {
+		return err
+	}
 	return TambahIndexKinerja(db)
+}
+
+// backfillAkun memastikan data lama tetap valid setelah kolom OAuth ditambahkan:
+// akun lama dianggap provider "password" dan profilnya sudah lengkap.
+func backfillAkun(db *gorm.DB) error {
+	if err := db.Exec(`UPDATE users SET auth_provider = 'password' WHERE auth_provider IS NULL OR auth_provider = ''`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`UPDATE users SET profile_completed = true WHERE profile_completed IS NULL`).Error
 }
 
 // TambahIndexKinerja: index untuk query terpanas (deadline, status, user_id).

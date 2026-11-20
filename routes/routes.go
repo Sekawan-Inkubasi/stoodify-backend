@@ -189,6 +189,7 @@ func SetupRoutes() *gin.Engine {
 			auth.POST("/refresh", authLimiter, authCtrl.Refresh) // Menerima refresh_token di body
 			auth.POST("/password-reset/request", authLimiter, authCtrl.PasswordResetRequest)
 			auth.POST("/password-reset/confirm", authLimiter, authCtrl.PasswordResetConfirm)
+			auth.POST("/google", authLimiter, authCtrl.LoginGoogle)
 
 			// Protected (Butuh Access Token valid)
 			authProtected := auth.Group("")
@@ -213,6 +214,7 @@ func SetupRoutes() *gin.Engine {
 				users.PATCH("/me", userCtrl.UpdateMe)
 				users.POST("/avatar", userCtrl.UploadAvatar)
 				users.POST("/change-password", authCtrl.ChangePassword)
+				users.PATCH("/me/onboarding", userCtrl.CompleteOnboarding)
 				users.GET("/me/preferences", userCtrl.GetPreferences)
 				users.PATCH("/me/preferences", userCtrl.UpdatePreferences)
 			}
@@ -276,7 +278,9 @@ func SetupRoutes() *gin.Engine {
 			}
 
 			// --- AI BRIDGE ---
-			ai := protected.Group("/ai")
+			// Fitur AI butuh data sekolah/kelas/jurusan: akun Google yang belum
+			// onboarding ditolak 409 sampai PATCH /users/me/onboarding.
+			ai := protected.Group("/ai", middlewares.RequireProfileComplete())
 			{
 				// Schedule Recommendations
 				ai.POST("/schedule-recommendations/generate", aiCtrl.GenerateSchedule)
@@ -314,7 +318,7 @@ func SetupRoutes() *gin.Engine {
 			}
 
 			// --- STATISTICS ---
-			statistics := protected.Group("/statistics")
+			statistics := protected.Group("/statistics", middlewares.RequireProfileComplete())
 			{
 				statistics.GET("/overview", statsCtrl.GetOverview)
 				statistics.GET("/weekly", statsCtrl.GetWeekly)
