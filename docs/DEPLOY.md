@@ -66,3 +66,43 @@ curl -s -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' \
   -d '{"email":"smoke@example.com","password":"rahasia123"}'
 ```
 Login harus membalas `access_token` dan `refresh_token`.
+
+## CLI Operasional (untuk DevOps)
+
+Binary `stoodify` sudah membawa perintah operasional, jadi tidak perlu skrip tambahan di server.
+
+| Perintah | Fungsi |
+| --- | --- |
+| `stoodify doctor` | Periksa env wajib, konektivitas AI, dan database. Exit 1 bila ada `[FAIL]` — pakai sebagai gate sebelum deploy. `--json` untuk monitoring. |
+| `stoodify version` | Tampilkan versi/commit/build date yang **sedang berjalan** (diisi lewat `-ldflags` saat build Docker). |
+| `stoodify db:backup` | `pg_dump` + gzip ke `./backups/stoodify-<waktu>.sql.gz`, rotasi otomatis (`--keep`, default 7). |
+| `stoodify db:restore` | Pulihkan dari `--file=<path>` atau `--latest`. Di production wajib `--force`. |
+| `stoodify rollback` | Pulihkan database ke backup terakhir (`--step`), lalu AutoMigrate agar skema mutakhir. `--list` untuk melihat titik pemulihan. |
+| `stoodify migrate` / `migrate:fresh` / `seed` | Seperti sebelumnya. |
+
+### Alur deploy yang disarankan
+
+```bash
+stoodify doctor              # 1. gate: jangan lanjut kalau ada [FAIL]
+stoodify db:backup           # 2. snapshot sebelum perubahan skema
+stoodify migrate             # 3. terapkan migrasi
+# ... deploy kode lewat CI (docker compose up -d --build app) ...
+```
+
+### Kalau deploy bermasalah
+
+```bash
+stoodify rollback --list     # lihat titik pemulihan
+stoodify rollback --step=1   # pulihkan DATA terakhir
+git reset --hard <sha-lama>  # pulihkan KODE
+docker compose up -d --build app
+```
+
+**Batasan yang perlu dipahami:** `rollback` hanya mengembalikan **data**, bukan binary. Rollback kode tetap lewat git/CI karena binary tidak bisa menurunkan versi dirinya sendiri. Kedua langkah harus dilakukan bersamaan kalau migrasi ikut berubah.
+
+### Catatan backup
+
+- File backup berisi **seluruh isi database** (termasuk hash password & email) — perlakukan sebagai rahasia. Direktori `./backups/` sudah masuk `.gitignore`.
+- Backup disimpan **lokal** di server; untuk produksi sebaiknya disalin ke object storage karena filesystem container bersifat ephemeral.
+- `pg_dump`/`psql` sudah tersedia di image (`postgresql16-client`). Kalau menjalankan binary di luar Docker, pasang dulu `postgresql-client`.
+

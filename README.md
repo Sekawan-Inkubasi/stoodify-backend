@@ -29,6 +29,12 @@ Kompilasi otomatis ke cache temporer Go saat perintah dipanggil:
 go run . serve                # Menjalankan server API pada port default (8080)
 go run . seed --demo          # Menanamkan akun demo Muhammad Naufal Rafa Al As'ad
 go run . migrate:fresh --demo # Hapus semua tabel, migrasi ulang, langsung isi akun demo
+
+# Operasional (lihat docs/DEPLOY.md untuk detail)
+go run . doctor               # cek env, database, dan service AI sebelum deploy
+go run . version              # versi/commit yang sedang berjalan
+go run . db:backup            # backup database ke ./backups (gzip + rotasi)
+go run . rollback --list      # lihat titik pemulihan data yang tersedia
 ```
 
 #### Cara B: Menggunakan Binary File Hasil Kompilasi

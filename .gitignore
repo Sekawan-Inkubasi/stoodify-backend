@@ -19,3 +19,6 @@
 genhash_tmp.go
 .neon
 node_modules/
+
+# backup database (stoodify db:backup)
+/backups/
