@@ -80,7 +80,7 @@ func (ctrl *CurriculumController) GetRoadmapBySubject(konteks *gin.Context) {
 	var topics []migrations.CurriculumTopic
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).
 		Where("subject_id = ?", subjectID).
-		Order("`order` ASC, id ASC").
+		Order(`"order" ASC, id ASC`).
 		Find(&topics).Error; err != nil {
 		response.ServerError(konteks, err)
 		return

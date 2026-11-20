@@ -82,7 +82,7 @@ func (ctrl *AuthController) ProsesLoginGoogle(konteks *gin.Context, idToken stri
 		"access_token":     access.Token,
 		"refresh_token":    refresh.Token,
 		"token_type":       "Bearer",
-		"expires_in":       int(token.AccessTTL.Seconds()),
+		"expires_in":       int(token.GetAccessTTL().Seconds()),
 		"user":             user,
 		"needs_onboarding": perluOnboarding,
 		"auth_provider":    user.AuthProvider,

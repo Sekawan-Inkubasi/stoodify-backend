@@ -24,20 +24,30 @@ const (
 	TypeRefresh = "refresh"
 )
 
-func init() {
+// GetAccessTTL membaca JWT_ACCESS_TTL secara dinamis (setelah .env dimuat).
+func GetAccessTTL() time.Duration {
 	if customAccess := os.Getenv("JWT_ACCESS_TTL"); customAccess != "" {
 		if d, err := time.ParseDuration(customAccess); err == nil && d > 0 {
-			AccessTTL = d
+			return d
 		}
 	}
-	if customRefresh := os.Getenv("JWT_REFRESH_TTL"); customRefresh != "" {
-		if d, err := time.ParseDuration(customRefresh); err == nil && d > 0 {
-			RefreshTTL = d
-		}
-	}
+	return AccessTTL
 }
 
-var ErrInvalid = errors.New("token tidak valid")
+// GetRefreshTTL membaca JWT_REFRESH_TTL secara dinamis (setelah .env dimuat).
+func GetRefreshTTL() time.Duration {
+	if customRefresh := os.Getenv("JWT_REFRESH_TTL"); customRefresh != "" {
+		if d, err := time.ParseDuration(customRefresh); err == nil && d > 0 {
+			return d
+		}
+	}
+	return RefreshTTL
+}
+
+var (
+	ErrInvalid     = errors.New("token tidak valid")
+	ErrSecretEmpty = errors.New("JWT_SECRET belum dikonfigurasi")
+)
 
 type Issued struct {
 	Token     string    `json:"token"`
@@ -80,6 +90,10 @@ func newJTI() string {
 }
 
 func sign(userID uint, typ string, ttl time.Duration, tokenVersion int) (Issued, error) {
+	sec := secret()
+	if len(sec) == 0 {
+		return Issued{}, ErrSecretEmpty
+	}
 	now := time.Now()
 	jti := newJTI()
 	c := claims{
@@ -92,22 +106,26 @@ func sign(userID uint, typ string, ttl time.Duration, tokenVersion int) (Issued,
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
 	}
-	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString(secret())
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString(sec)
 	return Issued{Token: signed, ExpiresAt: now.Add(ttl), JTI: jti}, err
 }
 
 func GenerateAccess(userID uint, tokenVersion int) (Issued, error) {
-	return sign(userID, TypeAccess, AccessTTL, tokenVersion)
+	return sign(userID, TypeAccess, GetAccessTTL(), tokenVersion)
 }
 func GenerateRefresh(userID uint, tokenVersion int) (Issued, error) {
-	return sign(userID, TypeRefresh, RefreshTTL, tokenVersion)
+	return sign(userID, TypeRefresh, GetRefreshTTL(), tokenVersion)
 }
 
 // Parse menolak semua kegagalan dengan satu sentinel error agar pemanggil
 // tidak membocorkan alasan penolakan. WithValidMethods memblokir alg=none.
 func Parse(tokenStr string, wantType string) (userID uint, jti string, tokenVersion int, err error) {
+	sec := secret()
+	if len(sec) == 0 {
+		return 0, "", 0, ErrInvalid
+	}
 	parsed, err := jwt.ParseWithClaims(tokenStr, &claims{}, func(*jwt.Token) (interface{}, error) {
-		return secret(), nil
+		return sec, nil
 	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 	if err != nil || !parsed.Valid {
 		return 0, "", 0, ErrInvalid

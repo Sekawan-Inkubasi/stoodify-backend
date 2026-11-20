@@ -71,7 +71,7 @@ type TaskStatusInput struct {
 }
 
 type TaskProgressInput struct {
-	Progress int `json:"progress" binding:"required,min=0,max=100"`
+	Progress *int `json:"progress" binding:"required,min=0,max=100"`
 }
 
 // GetAll mendukung filter ?status= &subject_id=, search judul, sort prioritas.
@@ -106,12 +106,7 @@ func (ctrl *TaskController) GetAll(konteks *gin.Context) {
 		return
 	}
 
-	var pref migrations.UserPreference
-	ctrl.DB.Where("user_id = ?", user.ID).First(&pref)
-	budget := 120
-	if pref.SessionDuration > 0 {
-		budget = pref.SessionDuration * 3
-	}
+	budget := dailyBudgetMinutes(user.ID)
 
 	taskResponses := make([]TaskResponse, len(tasks))
 	for i, t := range tasks {
@@ -152,6 +147,7 @@ func (ctrl *TaskController) Create(konteks *gin.Context) {
 		UserID:            user.ID,
 		SubjectID:         input.SubjectID,
 		Title:             input.Title,
+		MaterialName:      input.MaterialName,
 		Description:       input.Description,
 		Type:              taskType,
 		Deadline:          input.Deadline,
@@ -160,7 +156,7 @@ func (ctrl *TaskController) Create(konteks *gin.Context) {
 		Status:            migrations.StatusPending,
 		Notes:             input.Notes,
 	}
-	recalcTask(&task)
+	computeTaskPriority(&task)
 
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&task).Error; err != nil {
 		response.ServerError(konteks, err)
@@ -291,6 +287,7 @@ func (ctrl *TaskController) UpdateStatus(konteks *gin.Context) {
 	if input.Status == migrations.StatusDone {
 		task.Progress = 100
 	}
+	computeTaskPriority(&task)
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&task).Error; err != nil {
 		response.ServerError(konteks, err)
 		return
@@ -318,16 +315,17 @@ func (ctrl *TaskController) UpdateProgress(konteks *gin.Context) {
 		return
 	}
 
-	task.Progress = input.Progress
+	progressVal := *input.Progress
+	task.Progress = progressVal
 	switch {
-	case input.Progress >= 100:
+	case progressVal >= 100:
 		task.Status = migrations.StatusDone
 	case task.Status == migrations.StatusDone:
 		task.Status = migrations.StatusInProgress
-	case task.Status == migrations.StatusPending:
+	case task.Status == migrations.StatusPending && progressVal > 0:
 		task.Status = migrations.StatusInProgress
 	}
-	recalcTask(&task)
+	computeTaskPriority(&task)
 
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&task).Error; err != nil {
 		response.ServerError(konteks, err)
@@ -337,9 +335,9 @@ func (ctrl *TaskController) UpdateProgress(konteks *gin.Context) {
 	response.OK(konteks, "progres tugas diperbarui", task)
 }
 
-// GetUpcoming: deadline dalam 7 hari ke depan, status belum selesai.
+// GetUpcoming: deadline dalam 7 hari ke depan, status belum selesai (terdekat dulu).
 func (ctrl *TaskController) GetUpcoming(konteks *gin.Context) {
-	ctrl.byDeadlineWindow(konteks, time.Now(), time.Now().AddDate(0, 0, 7), "DESC")
+	ctrl.byDeadlineWindow(konteks, time.Now(), time.Now().AddDate(0, 0, 7), "ASC")
 }
 
 // GetOverdue: deadline sudah lewat dan belum selesai.

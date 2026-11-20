@@ -74,6 +74,11 @@ func (ctrl *SubjectController) Create(konteks *gin.Context) {
 		return
 	}
 
+	difficulty := input.Difficulty
+	if difficulty == 0 {
+		difficulty = 3
+	}
+
 	subject := migrations.Subject{
 		UserID:     user.ID,
 		Name:       input.Name,
@@ -82,7 +87,7 @@ func (ctrl *SubjectController) Create(konteks *gin.Context) {
 		Color:      input.Color,
 		AccentBg:   input.AccentBg,
 		Category:   input.Category,
-		Difficulty: input.Difficulty,
+		Difficulty: difficulty,
 	}
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Create(&subject).Error; err != nil {
 		response.ServerError(konteks, err)

@@ -106,6 +106,12 @@ func TestLoginDitolakSebelumVerifikasi(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "false", resp.Errors["email_verified"])
 	assert.Contains(t, w.Body.String(), "Email belum diverifikasi")
+
+	// Password salah pada akun belum verifikasi harus tetap 401 (jangan bocorkan status verifikasi).
+	wWrong := postJSONAuth(r, "/auth/login", `{"email":"belum@example.com","password":"salah-password"}`)
+	require.Equal(t, http.StatusUnauthorized, wWrong.Code, wWrong.Body.String())
+	assert.Contains(t, wWrong.Body.String(), "email atau password salah")
+	assert.NotContains(t, wWrong.Body.String(), "Email belum diverifikasi")
 }
 
 func TestVerifikasiEmailMengaktifkanLogin(t *testing.T) {

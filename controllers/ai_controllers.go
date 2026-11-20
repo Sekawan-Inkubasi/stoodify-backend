@@ -353,8 +353,18 @@ func (ctrl *AIController) simpanRegenerasi(ctx context.Context, k konteksJadwal,
 	}
 
 	err := ctrl.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 1. Snapshot jadwal saat ini untuk fitur "Urungkan".
-		if payload, err := json.Marshal(k.Existing); err == nil {
+		awal, akhir := rentangHari(k.Tanggal)
+
+		// 1. Snapshot hanya sesi AI planned pada tanggal target yang memang akan diganti,
+		// supaya UndoRegenerasi tidak menduplikasi sesi pinned atau sesi hari lain.
+		diganti := make([]migrations.StudySession, 0)
+		for _, s := range k.Existing {
+			if s.AIGenerated && s.Status == migrations.SessionPlanned &&
+				!s.SessionDate.Before(awal) && s.SessionDate.Before(akhir) {
+				diganti = append(diganti, s)
+			}
+		}
+		if payload, err := json.Marshal(diganti); err == nil {
 			if err := tx.Create(&migrations.ScheduleSnapshot{
 				UserID:      k.User.ID,
 				SessionDate: k.Tanggal,
@@ -365,7 +375,6 @@ func (ctrl *AIController) simpanRegenerasi(ctx context.Context, k konteksJadwal,
 		}
 
 		// 2. Hapus hanya sesi AI planned pada tanggal target (rentang hari, aman untuk sqlite/PG).
-		awal, akhir := rentangHari(k.Tanggal)
 		if err := tx.Where("user_id = ? AND session_date >= ? AND session_date < ? AND status = ? AND ai_generated = ?",
 			k.User.ID, awal, akhir, migrations.SessionPlanned, true).
 			Delete(&migrations.StudySession{}).Error; err != nil {
@@ -434,7 +443,7 @@ func (ctrl *AIController) UndoRegenerasi(konteks *gin.Context) {
 		return
 	}
 
-	var dipulihkan []migrations.StudySession
+	dipulihkan := make([]migrations.StudySession, 0)
 	err := ctrl.DB.WithContext(konteks.Request.Context()).Transaction(func(tx *gorm.DB) error {
 		awal, akhir := rentangHari(snap.SessionDate)
 		if err := tx.Where("user_id = ? AND session_date >= ? AND session_date < ? AND status = ? AND ai_generated = ?",
@@ -443,6 +452,10 @@ func (ctrl *AIController) UndoRegenerasi(konteks *gin.Context) {
 			return err
 		}
 		for _, s := range sesiLama {
+			// Defensif terhadap snapshot lama: hanya pulihkan sesi AI pada tanggal snapshot.
+			if !s.AIGenerated || s.SessionDate.Before(awal) || !s.SessionDate.Before(akhir) {
+				continue
+			}
 			dipulihkan = append(dipulihkan, migrations.StudySession{
 				UserID:         user.ID,
 				TaskID:         s.TaskID,
@@ -457,11 +470,10 @@ func (ctrl *AIController) UndoRegenerasi(konteks *gin.Context) {
 				AIWarnings:     s.AIWarnings,
 			})
 		}
-		if len(dipulihkan) == 0 {
-			return nil
-		}
-		if err := tx.Create(&dipulihkan).Error; err != nil {
-			return err
+		if len(dipulihkan) > 0 {
+			if err := tx.Create(&dipulihkan).Error; err != nil {
+				return err
+			}
 		}
 		return tx.Delete(&snap).Error
 	})

@@ -77,6 +77,10 @@ func runServe(args []string) {
 	fs.Usage = func() { printServeHelp(fs) }
 	fs.Parse(args)
 
+	if strings.TrimSpace(os.Getenv("JWT_SECRET")) == "" {
+		log.Fatal("konfigurasi keamanan belum lengkap: JWT_SECRET kosong. Isi JWT_SECRET (mis. hasil `openssl rand -hex 32`) sebelum menjalankan server.")
+	}
+
 	// Backend ini murni bridge ke service AI (tidak ada fallback rule-based lokal),
 	// jadi konfigurasi AI divalidasi lebih dulu sebelum konek DB.
 	aiSchedulerURL := strings.TrimSpace(os.Getenv("AI_SCHEDULER_URL"))

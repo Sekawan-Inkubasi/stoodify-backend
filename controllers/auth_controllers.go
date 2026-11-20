@@ -187,20 +187,23 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 
 	// Akun yang dibuat lewat Google tidak punya password: arahkan ke tombol Google.
 	if user.AuthProvider == migrations.AuthProviderGoogle || user.PasswordHash == "" {
+		hashingPassword.CheckPasswordHash(input.Password, dummyHash)
 		response.Unauthorized(konteks, "Akun ini terdaftar lewat Google. Silakan masuk dengan tombol Google.")
 		return
 	}
 
-	// Belum verifikasi email = belum dianggap punya akun.
+	// Verifikasi password lebih dulu sebelum mengecek status verifikasi email,
+	// agar penyerang tanpa password tidak bisa mengetahui apakah email terdaftar/belum verifikasi.
+	if !hashingPassword.CheckPasswordHash(input.Password, user.PasswordHash) {
+		response.Unauthorized(konteks, "email atau password salah")
+		return
+	}
+
+	// Belum verifikasi email = belum dianggap aktif untuk login.
 	if !user.EmailVerified {
 		response.Fail(konteks, http.StatusForbidden,
 			"Email belum diverifikasi. Cek inbox atau minta kirim ulang verifikasi.",
 			map[string]string{"email_verified": "false"})
-		return
-	}
-
-	if !hashingPassword.CheckPasswordHash(input.Password, user.PasswordHash) {
-		response.Unauthorized(konteks, "email atau password salah")
 		return
 	}
 
@@ -219,7 +222,7 @@ func (ctrl *AuthController) Login(konteks *gin.Context) {
 		"access_token":     access.Token,
 		"refresh_token":    refresh.Token,
 		"token_type":       "Bearer",
-		"expires_in":       int(token.AccessTTL.Seconds()),
+		"expires_in":       int(token.GetAccessTTL().Seconds()),
 		"user":             user,
 		"needs_onboarding": user.AuthProvider == migrations.AuthProviderGoogle && !user.ProfileCompleted,
 		"auth_provider":    user.AuthProvider,
@@ -322,7 +325,7 @@ func (ctrl *AuthController) Refresh(konteks *gin.Context) {
 		"access_token":  newAccess.Token,
 		"refresh_token": newRefresh.Token,
 		"token_type":    "Bearer",
-		"expires_in":    int(token.AccessTTL.Seconds()),
+		"expires_in":    int(token.GetAccessTTL().Seconds()),
 	})
 }
 

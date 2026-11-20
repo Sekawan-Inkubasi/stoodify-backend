@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,16 +13,22 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"stoodify_backend/internal/mailer"
 	"stoodify_backend/internal/response"
+	"stoodify_backend/internal/token"
 	"stoodify_backend/migrations"
 )
 
 type UserController struct {
-	DB *gorm.DB
+	DB     *gorm.DB
+	Mailer mailer.Mailer
 }
 
 func NewUserController(db *gorm.DB) *UserController {
-	return &UserController{DB: db}
+	return &UserController{
+		DB:     db,
+		Mailer: mailer.NewMailer(),
+	}
 }
 
 type UpdateMeInput struct {
@@ -102,20 +109,66 @@ func (ctrl *UserController) UpdateMe(konteks *gin.Context) {
 	if input.Name != nil {
 		user.Name = *input.Name
 	}
+
+	emailBerubah := false
 	if input.Email != nil {
 		email := normalizeEmail(*input.Email)
-		var other migrations.User
-		if err := ctrl.DB.Where("email = ? AND id <> ?", email, user.ID).First(&other).Error; err == nil {
-			response.Fail(konteks, 409, "email sudah dipakai user lain", nil)
-			return
+		if email != user.Email {
+			var other migrations.User
+			if err := ctrl.DB.WithContext(konteks.Request.Context()).Where("email = ? AND id <> ?", email, user.ID).First(&other).Error; err == nil {
+				response.Fail(konteks, 409, "email sudah dipakai user lain", nil)
+				return
+			}
+			user.Email = email
+			user.EmailVerified = false
+			emailBerubah = true
 		}
-		user.Email = email
 	}
 
-	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&user).Error; err != nil {
+	ctx := konteks.Request.Context()
+	if err := ctrl.DB.WithContext(ctx).Save(&user).Error; err != nil {
 		response.ServerError(konteks, err)
 		return
 	}
+
+	if emailBerubah {
+		// Pastikan email_verified = false tercatat di DB dan kirim link verifikasi ke email baru.
+		if err := ctrl.DB.WithContext(ctx).Model(&migrations.User{}).
+			Where("id = ?", user.ID).Update("email_verified", false).Error; err != nil {
+			response.ServerError(konteks, err)
+			return
+		}
+		raw, hash, err := token.GenerateRandomToken()
+		if err != nil {
+			log.Printf("update-me: gagal membuat token verifikasi untuk %s: %v", user.Email, err)
+		} else {
+			now := time.Now()
+			txErr := ctrl.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+				if err := tx.Model(&migrations.EmailVerificationToken{}).
+					Where("user_id = ? AND used_at IS NULL", user.ID).
+					Update("used_at", now).Error; err != nil {
+					return err
+				}
+				return tx.Create(&migrations.EmailVerificationToken{
+					UserID:    user.ID,
+					TokenHash: hash,
+					ExpiresAt: now.Add(TTLVerifikasiEmail),
+				}).Error
+			})
+			if txErr != nil {
+				log.Printf("update-me: gagal menyimpan token verifikasi untuk %s: %v", user.Email, txErr)
+			} else if ctrl.Mailer != nil {
+				go func(targetEmail, verifyToken string) {
+					if err := ctrl.Mailer.SendEmailVerification(targetEmail, verifyToken); err != nil {
+						log.Printf("update-me: gagal kirim email verifikasi ke %s: %v", targetEmail, err)
+					}
+				}(user.Email, raw)
+			}
+		}
+		response.OK(konteks, "profil diperbarui, silakan verifikasi email baru Anda", user)
+		return
+	}
+
 	response.OK(konteks, "profil diperbarui", user)
 }
 

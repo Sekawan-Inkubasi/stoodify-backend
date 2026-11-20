@@ -723,6 +723,8 @@ paths:
       tags:
       - Users
       summary: Update Profil Sendiri
+      description: Memperbarui profil secara parsial. Jika email diubah ke alamat baru,
+        status email_verified direset ke false dan link verifikasi dikirim ke email baru.
       security:
       - bearerAuth: []
       requestBody:
@@ -734,9 +736,26 @@ paths:
                 name:
                   type: string
                   example: Budi Santoso Baru
+                email:
+                  type: string
+                  format: email
+                  example: budi.baru@student.id
+                school:
+                  type: string
+                  example: SMA Negeri 1
+                grade:
+                  type: integer
+                  minimum: 10
+                  maximum: 13
+                  example: 11
+                major:
+                  type: string
+                  example: IPA
       responses:
         '200':
           description: Profil diperbarui
+        '409':
+          description: Email sudah dipakai user lain
   /users/me/onboarding:
     patch:
       tags:
@@ -859,6 +878,7 @@ paths:
                   type: integer
                   minimum: 1
                   maximum: 5
+                  default: 3
                   example: 4
       responses:
         '201':
@@ -909,6 +929,7 @@ paths:
                   type: integer
                   minimum: 1
                   maximum: 5
+                  default: 3
                   example: 4
       responses:
         '200':
@@ -1120,6 +1141,9 @@ paths:
                 title:
                   type: string
                   example: PR Integral
+                material_name:
+                  type: string
+                  example: Integral Substitusi
                 description:
                   type: string
                   example: Nomor 1-10 halaman 45

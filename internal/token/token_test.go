@@ -87,3 +87,21 @@ func TestToken_ParseTampered(t *testing.T) {
 		t.Errorf("expected ErrInvalid untuk token dipalsukan, got %v", err)
 	}
 }
+
+func TestToken_LazyTTLAndEmptySecret(t *testing.T) {
+	t.Setenv("JWT_SECRET", "")
+	if _, err := GenerateAccess(1, 1); err != ErrSecretEmpty {
+		t.Fatalf("expected ErrSecretEmpty saat JWT_SECRET kosong, got %v", err)
+	}
+
+	t.Setenv("JWT_SECRET", "super-secret-test-key-minimum-32-chars-long")
+	t.Setenv("JWT_ACCESS_TTL", "45m")
+	t.Setenv("JWT_REFRESH_TTL", "48h")
+
+	if got := GetAccessTTL(); got.Minutes() != 45 {
+		t.Errorf("expected lazy access TTL 45m, got %v", got)
+	}
+	if got := GetRefreshTTL(); got.Hours() != 48 {
+		t.Errorf("expected lazy refresh TTL 48h, got %v", got)
+	}
+}

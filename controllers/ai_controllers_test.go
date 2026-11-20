@@ -218,6 +218,7 @@ func TestPostJSONMenjagaStatusDanPesanAI(t *testing.T) {
 
 func setupAITestDB(t *testing.T) *gorm.DB {
 	t.Helper()
+	t.Setenv("JWT_SECRET", "test-jwt-secret-key-for-unit-tests")
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
@@ -499,4 +500,61 @@ func TestUndoRegenerasiMengembalikanJadwal(t *testing.T) {
 	require.NoError(t, db.Where("user_id = ?", user.ID).Find(&sesi).Error)
 	require.Len(t, sesi, 1)
 	assert.Equal(t, "16:00", sesi[0].StartTime, "jadwal harus kembali ke snapshot")
+}
+
+func TestUndoRegenerasiTidakDuplikasiPinnedAtauHariLainDanHapusSnapshotKosong(t *testing.T) {
+	db := setupAITestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	user := migrations.User{Name: "Siswa Undo Aman", Email: "undo-aman@example.com", PasswordHash: "x"}
+	require.NoError(t, db.Create(&user).Error)
+	task := migrations.Task{UserID: user.ID, Title: "Tugas", Deadline: time.Now().Add(72 * time.Hour),
+		Difficulty: 3, EstimatedDuration: 60, Status: migrations.StatusPending}
+	require.NoError(t, db.Create(&task).Error)
+
+	hariIni := time.Now()
+	besok := hariIni.AddDate(0, 0, 1)
+
+	// Sesi pinned hari ini + sesi AI besok tidak boleh diduplikasi saat undo.
+	pinned := migrations.StudySession{
+		UserID: user.ID, TaskID: task.ID, SessionDate: hariIni,
+		StartTime: "15:00", Duration: 60, Status: migrations.SessionPlanned, AIGenerated: false,
+	}
+	aiBesok := migrations.StudySession{
+		UserID: user.ID, TaskID: task.ID, SessionDate: besok,
+		StartTime: "16:00", Duration: 60, Status: migrations.SessionPlanned, AIGenerated: true,
+	}
+	aiHariIni := migrations.StudySession{
+		UserID: user.ID, TaskID: task.ID, SessionDate: hariIni,
+		StartTime: "19:00", Duration: 60, Status: migrations.SessionPlanned, AIGenerated: true,
+	}
+	require.NoError(t, db.Create(&pinned).Error)
+	require.NoError(t, db.Create(&aiBesok).Error)
+	require.NoError(t, db.Create(&aiHariIni).Error)
+
+	// Snapshot lama (simulasi data sebelum fix yang ikut menyimpan pinned & besok).
+	lama, err := json.Marshal([]migrations.StudySession{pinned, aiBesok})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&migrations.ScheduleSnapshot{
+		UserID: user.ID, SessionDate: hariIni, Payload: string(lama),
+	}).Error)
+
+	ctrl := NewAIController(db)
+	w := httptest.NewRecorder()
+	konteks, _ := gin.CreateTestContext(w)
+	konteks.Request = httptest.NewRequest(http.MethodPost, "/api/ai/schedule-recommendations/undo", nil)
+	konteks.Set(middlewares.ContextUserKey, user)
+
+	ctrl.UndoRegenerasi(konteks)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	// Hanya pinned (1) dan aiBesok (1) yang tersisa — tidak ada duplikasi.
+	var sesi []migrations.StudySession
+	require.NoError(t, db.Where("user_id = ?", user.ID).Find(&sesi).Error)
+	assert.Len(t, sesi, 2, "pinned dan sesi besok tidak boleh diduplikasi")
+
+	// Snapshot kosong harus ikut terhapus.
+	var snapCount int64
+	require.NoError(t, db.Model(&migrations.ScheduleSnapshot{}).Where("user_id = ?", user.ID).Count(&snapCount).Error)
+	assert.Zero(t, snapCount, "snapshot harus dihapus walau tidak ada sesi AI yang dipulihkan")
 }

@@ -17,18 +17,24 @@ func currentUser(konteks *gin.Context) migrations.User {
 	return middlewares.MustUser(konteks)
 }
 
-// dailyBudgetMinutes: durasi sesi harian dari preferensi user (fallback 120).
+// dailyBudgetMinutes: total anggaran belajar harian dari preferensi user (fallback 120).
+// Dipakai konsisten oleh priority_score (tersimpan) dan priority_breakdown (respons GET).
 func dailyBudgetMinutes(userID uint) int {
 	var pref migrations.UserPreference
 	err := config.DB.Where("user_id = ?", userID).First(&pref).Error
 	if err != nil || pref.SessionDuration <= 0 {
 		return 120
 	}
-	return pref.SessionDuration
+	maxSessions := pref.MaxSessionsPerDay
+	if maxSessions <= 0 {
+		maxSessions = 3
+	}
+	return pref.SessionDuration * maxSessions
 }
 
-// recalcTask menghitung ulang priority_score dan menyimpannya.
-func recalcTask(task *migrations.Task) {
+// computeTaskPriority menghitung priority_score dan mengisi task.PriorityScore tanpa
+// menulis ke DB (aman dipanggil sebelum Create atau Save).
+func computeTaskPriority(task *migrations.Task) float64 {
 	score := priority.Score(priority.Input{
 		Deadline:        task.Deadline,
 		Difficulty:      task.Difficulty,
@@ -39,7 +45,15 @@ func recalcTask(task *migrations.Task) {
 		Now:             time.Now(),
 	})
 	task.PriorityScore = score
-	config.DB.Model(task).UpdateColumn("priority_score", score)
+	return score
+}
+
+// recalcTask menghitung ulang priority_score dan menyimpannya bila task sudah punya ID.
+func recalcTask(task *migrations.Task) {
+	score := computeTaskPriority(task)
+	if task.ID > 0 {
+		config.DB.Model(task).UpdateColumn("priority_score", score)
+	}
 }
 
 func findOwnedTask(userID, taskID uint) (migrations.Task, bool) {
