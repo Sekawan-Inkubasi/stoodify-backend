@@ -25,7 +25,7 @@ Sebelum melakukan perubahan atau membaca kode, baca file-file referensi berikut 
 
 ### 📖 Pengetahuan & Spesifikasi API
 - [`README.md`](../README.md) — Panduan setup lokal dan ringkasan fitur.
-- [`docs/API.md`](API.md) — Katalog 65 endpoint API backend lengkap dengan contoh request dan response. Endpoint utilitas di luar prefix `/api`: `GET /`, `GET /health`, `GET /docs` (Swagger UI), `GET /openapi.yaml`, dan static `GET /uploads/*`.
+- [`docs/API.md`](API.md) — Katalog endpoint API backend lengkap dengan contoh request dan response (**72 endpoint** di bawah prefix `/api`, sinkron dengan `routes.SetupRoutes`). Endpoint utilitas di luar prefix: `GET /`, `GET /api/`, `GET /health`, `GET /docs` (Scalar UI, bukan Swagger), `GET /openapi.yaml`, `GET /verify-email` (halaman jembatan link email), dan static `GET /uploads/*`.
 - [`docs/AI_CONTRACT.md`](AI_CONTRACT.md) — Kontrak spesifikasi payload JSON antara backend Go dan AI Specialist (Scheduler & Predictor).
 - [`docs/SECURITY.md`](SECURITY.md) — Batasan keras keamanan, sanitasi database error, hashing password, dan penanganan token JWT.
 - [`docs/GLOSSARY.md`](GLOSSARY.md) — Kamus istilah domain (Priority Score, Study Session, Late Task, AI Bridge, Day of Week, dll).
@@ -39,6 +39,10 @@ Sebelum melakukan perubahan atau membaca kode, baca file-file referensi berikut 
 3. **Sanitasi Error**: Jangan pernah mengirim `err.Error()` mentah dari SQL/database ke client dalam response 500 (`response.ServerError` sudah otomatis menyembunyikan raw error).
 4. **Verifikasi Build**: Setelah melakukan perubahan kode Go, selalu jalankan:
    ```bash
-   go test ./... && go vet ./... && go build ./...
+   test -z "$(gofmt -l .)" && go build ./... && go vet ./... && go test -race ./...
    ```
+   `gofmt -l` selalu exit 0 walau ada file belum diformat — pakai `test -z` agar CI bisa gagal.
+   Untuk menguji jalur PostgreSQL (test integrasi di `controllers/auth_controllers_test.go`),
+   set `TEST_DATABASE_URL`; tanpa itu tes tersebut **di-skip** dan bug khusus Postgres
+   (mis. perilaku index unik) tidak akan tertangkap.
 5. **Format Bruno Collection**: Koleksi API client Bruno wajib menggunakan format **OpenCollection specification v1.0.0 berformat `.yml`** (bukan `.bru`).

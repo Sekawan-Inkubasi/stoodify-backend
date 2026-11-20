@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: 'REST API Stoodify — Asisten Belajar Berbasis AI untuk Siswa SMP/SMA/SMK.
 
-    Golang + Gin + GORM + Supabase PostgreSQL.'
+    Golang + Gin + GORM + PostgreSQL.'
   contact:
     name: Stoodify Team
     url: https://github.com/Sekawan-Inkubasi/stoodify-backend
@@ -405,6 +405,15 @@ components:
           - accurate
           - inaccurate
 paths:
+  /:
+    get:
+      tags:
+      - Root
+      summary: Info service (tanpa auth)
+      security: []
+      responses:
+        '200':
+          description: Nama service, versi, api_base, tautan docs
   /auth/register:
     post:
       tags:
@@ -568,6 +577,46 @@ paths:
       responses:
         '200':
           description: Pesan generik (tidak membocorkan status email)
+  /ai/chat:
+    post:
+      tags:
+      - AI Bridge
+      summary: Chatbot asisten belajar
+      description: |
+        Meneruskan pesan ke service AI (AI_CHAT_URL). Bila service belum
+        dikonfigurasi, backend memakai default http://127.0.0.1:8000/chat.
+        Butuh profil lengkap (403 saat profile_completed=false via 409 gate di grup /ai).
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - message
+              properties:
+                message:
+                  type: string
+                  example: Rangkum materi integral untukku
+                history:
+                  type: array
+                  items:
+                    type: object
+                  description: Riwayat percakapan (format bebas, diteruskan apa adanya)
+                context:
+                  type: object
+                  description: Konteks tambahan dari aplikasi (mapel, tugas, dll)
+      responses:
+        '200':
+          description: Balasan chat (reply, action, model, source, latency_ms)
+        '400':
+          description: Body tidak valid
+        '409':
+          description: Profil belum lengkap
+        '502':
+          description: Service AI gagal membalas
   /auth/google:
     post:
       tags:

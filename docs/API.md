@@ -247,9 +247,9 @@ PATCH /users/me/onboarding
 
 Wajib untuk akun Google sebelum memakai fitur AI/statistik. `grade` 10-13. Idempotent — boleh dipanggil ulang untuk memperbarui.
 
-Selama `profile_completed=false`, endpoint berikut membalas **409**:
+Selama `profile_completed=false`, **seluruh** grup `/api/ai/*` dan `/api/statistics/*` membalas **409** — bukan hanya endpoint generate:
 
-`POST /ai/schedule-recommendations/generate`, `POST /ai/reschedule`, `POST /ai/chat`, `POST /ai/material-predictions/generate`, dan seluruh `GET /statistics/*`.
+`POST /ai/schedule-recommendations/generate`, `GET /ai/schedule-recommendations`, `POST /ai/schedule-recommendations/undo`, `POST /ai/schedule-recommendations/{id}/accept`, `POST /ai/schedule-recommendations/{id}/reject`, `POST /ai/reschedule`, `POST /ai/material-predictions/generate`, `GET /ai/material-predictions/{subjectId}`, `POST /ai/material-predictions/{id}/feedback`, `POST /ai/chat`, dan `GET /statistics/{overview,weekly,monthly,subjects}`.
 
 ```json
 { "success": false, "message": "Lengkapi profil dulu (sekolah, kelas, jurusan) sebelum memakai fitur ini",
@@ -292,6 +292,19 @@ Halaman HTML kecil yang dibuka saat user mengeklik link di email. Isinya:
 Halaman ini **tidak** memverifikasi (tidak menandai token terpakai) — verifikasi tetap lewat `POST /api/auth/verify-email` dari aplikasi. Ini disengaja: email client sering *prefetch* link, jadi kalau halaman langsung memverifikasi, token bisa habis sebelum user benar-benar mengekliknya.
 
 Skema deep link diatur lewat `EMAIL_VERIFICATION_DEEPLINK` (default `stoodify://verify-email`).
+
+### 1.10 Ganti password (dua endpoint setara)
+
+```
+POST /auth/password/change
+POST /users/change-password
+```
+
+```json
+{ "current_password": "rahasia123", "new_password": "rahasiaBaru123", "confirm_password": "rahasiaBaru123" }
+```
+
+`old_password` diterima sebagai alias `current_password`. Sukses → **200**; **seluruh sesi lama dicabut** (`token_version` naik, semua refresh token aktif di-revoke), jadi aplikasi harus login ulang.
 
 ---
 

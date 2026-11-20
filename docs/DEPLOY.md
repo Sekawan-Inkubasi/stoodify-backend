@@ -1,12 +1,12 @@
 # Deployment
 
-Backend Go ini butuh satu proses (HTTP + scheduler goroutine) dan satu PostgreSQL (Supabase).
+Backend Go ini butuh satu proses (HTTP + scheduler goroutine) dan satu PostgreSQL (Supabase/Neon/pg biasa).
 
 ## Wajib diset di server
 
 | Env | Nilai |
 |---|---|
-| `POSTGRES_URL` | DSN Supabase. Kalau lewat pooler: `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?sslmode=require`. Direct: port `5432`. Bisa juga `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (Neon). |
+| `POSTGRES_URL` | DSN PostgreSQL (Supabase/Neon). Kalau lewat pooler Supabase: `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?sslmode=require`. Direct: port `5432`. Bisa juga `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (Neon). |
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `PORT` | diisi otomatis oleh Railway/Render — jangan hardcode |
 | `TRUSTED_PROXIES` | IP/CIDR reverse proxy, mis. `10.0.0.0/8`. Kosong = percaya semua `X-Forwarded-For` (rate limiter jadi bisa dibohongi) |
@@ -14,11 +14,13 @@ Backend Go ini butuh satu proses (HTTP + scheduler goroutine) dan satu PostgreSQ
 | `AI_PREDICTOR_URL` | **wajib** untuk `serve` (kosong = server menolak start) |
 | `AI_API_KEY` | opsional; dikirim sebagai Bearer ke kedua endpoint |
 | `AI_TIMEOUT_SECONDS` | opsional, default `15`. Lewat batas ini klien dapat `502` |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | opsional, untuk email reset password. Kosong = `NoopMailer` (email tidak dikirim, token tetap dibuat) |
-| `PASSWORD_RESET_URL` | base URL halaman reset di aplikasi, dipakai di body email |
-| `EMAIL_VERIFICATION_URL` | URL halaman **jembatan** verifikasi di backend, mis. `https://api.domainmu/verify-email` — dipakai di body email |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | **Wajib** untuk production: dipakai reset password dan verifikasi email. Kosong = `NoopMailer` (tidak ada email terkirim, tanpa error) sehingga pendaftar baru tidak bisa login |
+| `EMAIL_VERIFICATION_URL` | URL halaman jembatan verifikasi di backend, mis. `https://api.domainmu/verify-email` — dipakai di body email |
 | `EMAIL_VERIFICATION_DEEPLINK` | Skema deep link aplikasi, default `stoodify://verify-email`. Harus sama dengan konfigurasi app |
-| `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_FROM` | Wajib untuk production: tanpa `SMTP_HOST`, `NoopMailer` aktif dan pendaftar tidak pernah menerima link verifikasi (tidak bisa login) |
+| `PASSWORD_RESET_URL` | base URL halaman reset di aplikasi, dipakai di body email |
+| `APP_ENV` | `production` (sudah di `docker-compose.yml`). Menyembunyikan detail error internal dari client |
+| `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | opsional; kosong = 15m / 168h |
+| `TZ` | zona waktu untuk engine AI (default `Asia/Jakarta`) |
 
 AutoMigrate + index dijalankan saat boot, jadi deploy pertama langsung membuat tabel.
 
