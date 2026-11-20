@@ -447,7 +447,7 @@ paths:
                   example: SMK Telkom Sidoarjo
                 grade:
                   type: integer
-                  minimum: 7
+                  minimum: 10
                   maximum: 13
                   example: 10
                 major:
@@ -712,7 +712,7 @@ paths:
                   example: SMK Telkom Sidoarjo
                 grade:
                   type: integer
-                  minimum: 7
+                  minimum: 10
                   maximum: 13
                   example: 10
                 major:
@@ -722,7 +722,7 @@ paths:
         '200':
           description: Profil lengkap, fitur belajar terbuka
         '400':
-          description: Input tidak valid (grade harus 7-13)
+          description: Input tidak valid (grade harus 10-13)
   /users/me/preferences:
     get:
       tags:
@@ -2028,7 +2028,7 @@ paths:
                   example: 1
                 grade:
                   type: integer
-                  minimum: 7
+                  minimum: 10
                   maximum: 13
                 major:
                   type: string

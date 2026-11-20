@@ -43,7 +43,7 @@ POST /auth/register
 }
 ```
 
-Semua field **wajib**: `name`, `email`, `school`, `grade` (7–13), `major`, `password`, `confirm_password`. Backend adalah acuan kontrak — form daftar di aplikasi wajib menyediakan `school`, `grade`, dan `major`.
+Semua field **wajib**: `name`, `email`, `school`, `grade` (10-13), `major`, `password`, `confirm_password`. Backend adalah acuan kontrak — form daftar di aplikasi wajib menyediakan `school`, `grade`, dan `major`.
 
 **Akun baru belum aktif.** Backend mengirim link verifikasi ke email (berlaku 24 jam). Sebelum diklik, `POST /auth/login` membalas **403**:
 
@@ -245,7 +245,7 @@ PATCH /users/me/onboarding
 { "school": "SMK Telkom Sidoarjo", "grade": 10, "major": "SIJA" }
 ```
 
-Wajib untuk akun Google sebelum memakai fitur AI/statistik. `grade` 7–13. Idempotent — boleh dipanggil ulang untuk memperbarui.
+Wajib untuk akun Google sebelum memakai fitur AI/statistik. `grade` 10-13. Idempotent — boleh dipanggil ulang untuk memperbarui.
 
 Selama `profile_completed=false`, endpoint berikut membalas **409**:
 

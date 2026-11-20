@@ -73,7 +73,7 @@ func TestRegisterMenolakGradeDiLuarRentang(t *testing.T) {
 	setupAITestDB(t)
 	r := routerRegister(t)
 
-	body := `{"name":"Siswa","email":"siswa@example.com","grade":3,"password":"rahasia123","confirm_password":"rahasia123"}`
+	body := `{"name":"Siswa","email":"siswa@example.com","grade":9,"password":"rahasia123","confirm_password":"rahasia123"}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/register", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -86,7 +86,7 @@ func TestRegisterMenolakGradeDiLuarRentang(t *testing.T) {
 		Errors  map[string]string `json:"errors"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "minimal 7", resp.Errors["grade"])
+	assert.Equal(t, "minimal 10", resp.Errors["grade"])
 }
 
 func TestRegisterErrorTidakMembocorkanNamaStruct(t *testing.T) {

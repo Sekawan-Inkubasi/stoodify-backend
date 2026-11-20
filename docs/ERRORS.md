@@ -19,10 +19,11 @@ Daftar masalah yang pernah terjadi dan solusi terverifikasi agar agen tidak meng
 - **Penyebab**: `ShouldBindJSON` gagal karena body HTTP kosong.
 - **Solusi**: Controller telah disesuaikan untuk mengabaikan error `EOF` dan menganggap tanggal target adalah hari ini secara default.
 
-## 4. Validasi Grade Memblokir Siswa SMP
-- **Gejala**: Siswa kelas 7, 8, atau 9 gagal mendaftar dengan pesan validation error.
-- **Penyebab**: Tag validasi sebelumnya adalah `min=10`.
-- **Solusi**: Sudah dilonggarkan menjadi `min=7,max=13` untuk mengakomodasi siswa jenjang SMP, SMA, dan SMK 4 tahun.
+## 4. Rentang Grade yang Diterima (7 vs 10)
+- **Gejala**: Siswa kelas 9 gagal mendaftar dengan `errors: {"grade": "minimal 10"}`.
+- **Status kebijakan saat ini**: rentang yang diterima adalah **10–13** (SMA/SMK, termasuk SMK 4 tahun), diterapkan seragam di `RegisterInput`, `UpdateMeInput`, `OnboardingInput`, dan `CurriculumTopicInput`.
+- **Riwayat**: sempat dilonggarkan ke `min=7` agar siswa SMP bisa mendaftar, lalu dikembalikan ke `min=10` karena produk menargetkan SMA/SMK. Nilai 7–9 masih dipetakan di `kelasRomawi` hanya untuk membaca data lama.
+- **Kalau ingin menerima SMP lagi**: ubah tag `binding` di keempat DTO di atas **dan** `minimum` di `openapi.yaml`; jangan hanya mengubah satu tempat.
 
 ## 5. Pesan Error Validasi Membocorkan Nama Struct Go
 
@@ -60,7 +61,7 @@ lokal, jalankan `go run . serve` dengan `APP_ENV=development` (default).
 
 **Gejala:** daftar akun gagal dengan `errors: {"school": "wajib diisi", "grade": "wajib diisi", "major": "wajib diisi"}`.
 
-**Ini bukan bug backend.** Kontrak register mewajibkan `school`, `grade` (7–13), dan `major`; form daftar aplikasi harus menyediakan ketiganya. Jangan melonggarkan tag `binding` di `RegisterInput` supaya form lama lolos — frontend yang menyesuaikan ke backend, bukan sebaliknya.
+**Ini bukan bug backend.** Kontrak register mewajibkan `school`, `grade` (10-13), dan `major`; form daftar aplikasi harus menyediakan ketiganya. Jangan melonggarkan tag `binding` di `RegisterInput` supaya form lama lolos — frontend yang menyesuaikan ke backend, bukan sebaliknya.
 
 **Yang boleh diperbaiki di backend hanya pesan errornya** (lihat #5): pesan per field yang ramah + tidak membocorkan nama struct Go di production.
 

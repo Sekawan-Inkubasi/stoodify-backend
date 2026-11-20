@@ -28,7 +28,7 @@ type UpdateMeInput struct {
 	Name   *string `json:"name" binding:"omitempty,min=1,max=100"`
 	Email  *string `json:"email" binding:"omitempty,email,max=100"`
 	School *string `json:"school" binding:"omitempty,max=150"`
-	Grade  *int8   `json:"grade" binding:"omitempty,min=7,max=13"`
+	Grade  *int8   `json:"grade" binding:"omitempty,min=10,max=13"`
 	Major  *string `json:"major" binding:"omitempty,max=100"`
 }
 
@@ -45,7 +45,7 @@ type PreferencesInput struct {
 // belajar (jadwal AI, prediksi, statistik) terbuka.
 type OnboardingInput struct {
 	School string `json:"school" binding:"required,max=150"`
-	Grade  int8   `json:"grade" binding:"required,min=7,max=13"`
+	Grade  int8   `json:"grade" binding:"required,min=10,max=13"`
 	Major  string `json:"major" binding:"required,max=100"`
 }
 

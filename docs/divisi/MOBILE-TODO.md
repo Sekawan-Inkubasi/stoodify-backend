@@ -138,7 +138,7 @@ Backend: `POST /auth/google { id_token }` — menerima **ID token** dari Google 
 
 ## 12. Onboarding (sekolah / kelas / jurusan)
 
-- [ ] Form 3 field: `school` (teks), `grade` (7–13), `major` (teks). Validasi klien **dan** tampilkan `errors` per field dari server.
+- [ ] Form 3 field: `school` (teks), `grade` (10-13), `major` (teks). Validasi klien **dan** tampilkan `errors` per field dari server.
 - [ ] Submit → `PATCH /api/users/me/onboarding { school, grade, major }` (pakai access token yang sudah ada).
 - [ ] Tangani **409** dari endpoint lain dengan `errors.profile_completed = "false"` → lempar balik ke layar ini (jangan tampilkan sebagai error umum).
 - [ ] Setelah sukses, refresh `GET /api/users/me` lalu masuk beranda.

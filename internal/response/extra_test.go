@@ -18,7 +18,7 @@ type registerInput struct {
 	Name            string `json:"name" binding:"required,min=1,max=100"`
 	Email           string `json:"email" binding:"required,email"`
 	School          string `json:"school" binding:"required,max=150"`
-	Grade           int8   `json:"grade" binding:"required,min=7,max=13"`
+	Grade           int8   `json:"grade" binding:"required,min=10,max=13"`
 	Major           string `json:"major" binding:"required,max=100"`
 	Password        string `json:"password" binding:"required,min=8"`
 	ConfirmPassword string `json:"confirm_password" binding:"required"`
@@ -121,12 +121,12 @@ func TestValidationErrorProductionMenyembunyikanDetailInternal(t *testing.T) {
 func TestValidationErrorPesanRamahPerTag(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 
-	body := jalankanValidationError(t, `{"name":"","email":"bukan-email","school":"SMA","grade":3,"major":"IPA","password":"123","confirm_password":""}`)
+	body := jalankanValidationError(t, `{"name":"","email":"bukan-email","school":"SMA","grade":9,"major":"IPA","password":"123","confirm_password":""}`)
 
 	// Tag pertama yang gagal dilaporkan (required menang atas min).
 	assert.Equal(t, "wajib diisi", body.Errors["name"])
 	assert.Equal(t, "format email tidak valid", body.Errors["email"])
-	assert.Equal(t, "minimal 7", body.Errors["grade"])
+	assert.Equal(t, "minimal 10", body.Errors["grade"])
 	assert.Equal(t, "minimal 8 karakter", body.Errors["password"])
 	assert.Equal(t, "wajib diisi", body.Errors["confirm_password"])
 }

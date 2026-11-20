@@ -904,7 +904,8 @@ func parsePredictorResponse(raw json.RawMessage) (hasilPrediksi, bool) {
 	}, true
 }
 
-// kelasRomawi memetakan tingkat kelas (7..13) ke jenjang yang dipakai engine silabus.
+// kelasRomawi memetakan tingkat kelas ke jenjang yang dipakai engine silabus.
+// Kontrak saat ini 10..13; nilai 7..9 tetap dipetakan untuk data lama.
 func kelasRomawi(grade int8) string {
 	switch grade {
 	case 7:

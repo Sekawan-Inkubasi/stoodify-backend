@@ -26,7 +26,7 @@ Dokumen ini merupakan daftar kerja terpadu (*single source of truth*) yang mengo
 
 - [x] **5. Perbaikan Bug Validasi & Kredensial (Selesai Cepat / 1 Baris)**
   - [x] Typo validator `Major` di `controllers/auth_controllers.go`: sudah diperbaiki menjadi `required`.
-  - [x] Batasan `grade` di `auth_controllers.go`: sudah diubah menjadi `min=7,max=13` untuk mendukung SMP s.d. SMK.
+  - [x] Batasan `grade` di `auth_controllers.go`: saat ini `min=10,max=13` (SMA/SMK). Sempat dilonggarkan ke `min=7`, lalu dikembalikan.
   - [x] Log seeder di `internal/seeder/seeder.go`: string cetak password admin sudah disinkronkan ke `rahasia123`.
   - [x] Handle empty body pada `POST /ai/schedule-recommendations/generate`: toleransi EOF aktif.
 
