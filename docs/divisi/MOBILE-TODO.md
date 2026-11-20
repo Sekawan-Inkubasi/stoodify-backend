@@ -1,9 +1,27 @@
-# TODO Divisi Mobile — Penjadwalan Otomatis
+# TODO Divisi Mobile
 
 Scope: aplikasi mobile (`stoodify-mobile` / `stoodify-apk`). Backend tidak mengerjakan item di sini.
-Rujukan kontrak backend: [`docs/PLAN-AUTO-SCHEDULE.md`](../PLAN-AUTO-SCHEDULE.md) dan [`docs/API.md`](../API.md).
+Rujukan kontrak backend: [`docs/API.md`](../API.md), [`docs/PLAN-AUTO-SCHEDULE.md`](../PLAN-AUTO-SCHEDULE.md), dan [`docs/DECISIONS.md`](../DECISIONS.md) (ADR-008 s.d. ADR-010).
 
-Latar: jadwal AI sekarang **diterapkan otomatis** oleh backend setiap ada perubahan tugas. Tidak ada lagi alur "AI mengusulkan → user menerima". UI harus menyesuaikan agar jadwal terasa milik user.
+**Dua kelompok pekerjaan:**
+
+- **Bagian A (poin 1–9)** — penjadwalan otomatis: jadwal AI sekarang **diterapkan otomatis** oleh backend setiap ada perubahan tugas. Tidak ada lagi alur "AI mengusulkan → user menerima".
+- **Bagian B (poin 10–13)** — akun: verifikasi email wajib, login dengan Google, onboarding profil, dan field register yang wajib.
+
+Kerjakan **Bagian B lebih dulu**: tanpanya user baru tidak bisa login sama sekali.
+
+### Ringkasan endpoint akun (Bagian B)
+
+| Endpoint | Dipakai untuk |
+| --- | --- |
+| `POST /api/auth/register` | Daftar (wajib `school`/`grade`/`major`) → **tidak** memberi token |
+| `POST /api/auth/verify-email` | Kirim `{token}` dari deep link |
+| `POST /api/auth/verify-email/resend` | Kirim ulang link (balasan selalu generik) |
+| `POST /api/auth/google` | Kirim `{id_token}` dari Google Sign-In SDK |
+| `POST /api/auth/login` | `{email,password}` **atau** `{id_token}` |
+| `PATCH /api/users/me/onboarding` | Lengkapi `school`/`grade`/`major` (akun Google) |
+
+Halaman `GET /verify-email?token=...` (di luar `/api`) hanya jembatan ke deep link — aplikasi **tidak** perlu membukanya.
 
 ---
 
@@ -84,17 +102,64 @@ Latar: jadwal AI sekarang **diterapkan otomatis** oleh backend setiap ada peruba
 
 ---
 
-## Catatan koordinasi
+## 10. Verifikasi Email (wajib sebelum login)
+
+Backend: `POST /auth/register` sekarang **tidak** memberi token. Akun berstatus `email_verified=false` sampai user mengeklik link di email.
+
+- [ ] Setelah register **201**, jangan simpan token (tidak ada), langsung tampilkan layar **"Cek email kamu"** berisi email yang dipakai.
+- [ ] Tombol **Kirim ulang** → `POST /api/auth/verify-email/resend { email }`. Balasannya selalu 200 generik; tampilkan "Link baru sudah dikirim" tanpa mengklaim email pasti ada.
+- [ ] Tangani login **403** + `errors.email_verified = "false"` → arahkan ke layar "Cek email kamu", **bukan** pesan "email atau password salah".
+- [ ] Tangani login **401** "Akun ini terdaftar lewat Google" → tampilkan tombol **Masuk dengan Google**.
+- [ ] Batasi tombol kirim ulang (mis. 60 detik) supaya tidak spam.
+- [ ] Token kedaluwarsa/sudah dipakai (400 dari `/verify-email`) → tampilkan pesan + tombol kirim ulang.
+
+### Deep link `stoodify://verify-email`
+
+- [ ] Daftarkan skema di `AndroidManifest.xml` (intent-filter `BROWSABLE`, scheme `stoodify`, host `verify-email`).
+- [ ] Daftarkan URL Type `stoodify` di `Info.plist` (iOS).
+- [ ] Bagian **Universal/App Links** (opsional, lebih mulus): host `api.ezzar.my.id`, path `/verify-email`; kalau dipakai, backend perlu file `assetlinks.json` / `apple-app-site-association` — koordinasi dengan backend dulu.
+- [ ] Handler deep link: ambil `token` → `POST /api/auth/verify-email { token }` → sukses: "Email terverifikasi" + tombol **Masuk**.
+- [ ] Kalau dibuka saat app sudah login (kasus langka), cukup tampilkan hasil verifikasi tanpa mengubah sesi.
+
+**Acceptance:** user yang mendaftar dari HP bisa menyelesaikan verifikasi tanpa membuka browser manual dan tanpa mengetik apa pun.
+
+## 11. Login / Daftar dengan Google
+
+Backend: `POST /auth/google { id_token }` — menerima **ID token** dari Google Sign-In SDK (bukan access token).
+
+- [ ] Pasang Google Sign-In SDK (Android: Credential Manager / `google_sign_in`; iOS: Google Sign-In). Pakai **client ID platform masing-masing**, bukan client ID web.
+- [ ] Kirim `id_token` ke `POST /api/auth/google`, simpan `access_token` + `refresh_token`.
+- [ ] `needs_onboarding == true` → tampilkan layar **Sekolah / Kelas / Jurusan** (poin 12). `false` → langsung beranda.
+- [ ] Tangani `409` "email ini sudah terhubung ke akun Google lain" → sarankan login dengan cara sebelumnya.
+- [ ] Tangani `503` "login Google belum dikonfigurasi di server" → sembunyikan tombol Google atau tampilkan pesan netral (jangan crash).
+- [ ] `POST /auth/login` juga menerima `{ id_token }`; pilih satu jalur saja agar tidak duplikat logika.
+
+**Acceptance:** akun baru lewat Google langsung dapat sesi, dan layar onboarding hanya muncul sekali sampai profil lengkap.
+
+## 12. Onboarding (sekolah / kelas / jurusan)
+
+- [ ] Form 3 field: `school` (teks), `grade` (7–13), `major` (teks). Validasi klien **dan** tampilkan `errors` per field dari server.
+- [ ] Submit → `PATCH /api/users/me/onboarding { school, grade, major }` (pakai access token yang sudah ada).
+- [ ] Tangani **409** dari endpoint lain dengan `errors.profile_completed = "false"` → lempar balik ke layar ini (jangan tampilkan sebagai error umum).
+- [ ] Setelah sukses, refresh `GET /api/users/me` lalu masuk beranda.
+- [ ] Jangan izinkan "lewati": fitur AI & statistik memang terkunci sampai profil lengkap.
+
+**Acceptance:** tidak ada jalan bagi user untuk sampai ke fitur AI dengan `profile_completed=false`.
+
+## 13. Register: field wajib
+
+- [ ] Form daftar **wajib** punya `school`, `grade`, `major` — backend menolak tanpa itu (`errors.school/grade/major: "wajib diisi"`).
+- [ ] Tampilkan pesan error per field dari `errors`, jangan pesan generik "gagal mendaftar".
+
+**Acceptance:** tidak ada request register yang berakhir 400 hanya karena form kurang field.
+
+---
+
+## Catatan koordinasi (revisi)
 
 - Endpoint `accept`/`reject` **masih ada** di backend untuk sementara (deprecated). Jangan dipakai lagi, tapi jangan panik kalau masih muncul di collection Bruno lama.
 - Kontrak payload/response tidak berubah selain tambahan field opsional (`ai_source`, `ai_warnings`, `plan_version`).
 - Perubahan urutan kerja: backend fase 1–3 dulu, mobile bisa mulai poin 1, 2, 5, 6 paralel karena tidak menunggu endpoint baru (kecuali `undo`).
-
-## Verifikasi Email (wajib sebelum login)
-
-1. Layar daftar: setelah `POST /api/auth/register` (201), tampilkan layar **"Cek email kamu"** dengan tombol **Kirim ulang** → `POST /api/auth/verify-email/resend { email }`.
-2. Login yang dibalas **403** dengan `errors.email_verified = "false"` → arahkan ke layar yang sama, bukan pesan error umum.
-3. Daftarkan **deep link** `stoodify://verify-email` di `AndroidManifest.xml` (intent-filter `BROWSABLE` + skema `stoodify`, host `verify-email`) dan `Info.plist` (URL Types) untuk iOS.
-4. Saat app dibuka dengan `stoodify://verify-email?token=...` → ambil `token` → `POST /api/auth/verify-email { token }` → sukses: tampilkan "Email terverifikasi" dan lanjut ke layar login (token aplikasi belum ada, jadi user login manual).
-5. Kalau token kedaluwarsa (400) → tawarkan kirim ulang.
-
+- **PATCH kini parsial:** `PATCH /users/me`, `/subjects/:id`, `/schedules/:id`, `/tasks/:id`, `/activities/:id` hanya mengubah field yang dikirim. Aman mengirim satu field saja.
+- **Aktivitas:** selalu kirim `day_of_week` (Senin–Minggu) saat `recurrence = weekly`, kalau tidak AI menganggap kegiatan berlangsung setiap hari.
+- **Error validasi:** `errors` berisi pesan Indonesia per field (`{"school": "wajib diisi"}`). Di production tidak ada lagi teks mentah seperti `RegisterInput.School`.
