@@ -35,16 +35,15 @@ POST /auth/register
 {
   "name": "Aliezzar",
   "email": "liezzar@gmail.com",
-  "password": "rahasia123",
-  "confirm_password": "rahasia123",
   "school": "SMK TELKOM SIDOARJO",
   "grade": 10,
-  "major": "Teknik Komunikasi Jaringan"
+  "major": "Teknik Komunikasi Jaringan",
+  "password": "rahasia123",
+  "confirm_password": "rahasia123"
 }
 ```
 
-**Wajib:** `name`, `email`, `password`, `confirm_password`.
-**Opsional:** `school`, `grade` (7–13), `major` — layar daftar mobile hanya meminta tiga field pertama; sisanya dilengkapi lewat `PATCH /users/me` setelah login.
+Semua field **wajib**: `name`, `email`, `school`, `grade` (7–13), `major`, `password`, `confirm_password`. Backend adalah acuan kontrak — form daftar di aplikasi wajib menyediakan `school`, `grade`, dan `major`.
 
 Sukses → **201**:
 
