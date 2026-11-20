@@ -100,3 +100,14 @@ jobs:
             BUILD_DATE=${{ steps.meta.outputs.build_date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Trigger stoodify-infra deploy
+        if: env.INFRA_DISPATCH_TOKEN != ''
+        env:
+          INFRA_DISPATCH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${INFRA_DISPATCH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Sekawan-Inkubasi/stoodify-infra/dispatches" \
+            -d '{"event_type":"deploy-backend"}'
