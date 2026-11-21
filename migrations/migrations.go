@@ -89,6 +89,9 @@ type UserPreference struct {
 	ActiveDays        string `json:"active_days"`
 	BreakDuration     int    `gorm:"default:15" json:"break_duration"`
 	MaxSessionsPerDay int    `gorm:"default:3" json:"max_sessions_per_day"`
+	Goals             string `gorm:"type:text" json:"goals"`
+	SchoolStart       string `gorm:"type:varchar(10)" json:"school_start"`
+	SchoolEnd         string `gorm:"type:varchar(10)" json:"school_end"`
 }
 
 // ==================== SUBJECT & SCHEDULE ====================
