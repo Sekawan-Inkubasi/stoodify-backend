@@ -40,12 +40,15 @@ type UpdateMeInput struct {
 }
 
 type PreferencesInput struct {
-	StartTime         string `json:"start_time" binding:"omitempty,len=5"`
-	EndTime           string `json:"end_time" binding:"omitempty,len=5"`
-	SessionDuration   int    `json:"session_duration" binding:"omitempty,min=15,max=600"`
-	ActiveDays        string `json:"active_days"`
-	BreakDuration     int    `json:"break_duration" binding:"omitempty,min=5,max=120"`
-	MaxSessionsPerDay int    `json:"max_sessions_per_day" binding:"omitempty,min=1,max=10"`
+	StartTime         string  `json:"start_time" binding:"omitempty,len=5"`
+	EndTime           string  `json:"end_time" binding:"omitempty,len=5"`
+	SessionDuration   int     `json:"session_duration" binding:"omitempty,min=15,max=600"`
+	ActiveDays        string  `json:"active_days"`
+	BreakDuration     int     `json:"break_duration" binding:"omitempty,min=5,max=120"`
+	MaxSessionsPerDay int     `json:"max_sessions_per_day" binding:"omitempty,min=1,max=10"`
+	Goals             *string `json:"goals"`
+	SchoolStart       *string `json:"school_start"`
+	SchoolEnd         *string `json:"school_end"`
 }
 
 // OnboardingInput: data wajib yang harus dilengkapi akun Google sebelum fitur
@@ -222,6 +225,15 @@ func (ctrl *UserController) UpdatePreferences(konteks *gin.Context) {
 	}
 	if input.MaxSessionsPerDay > 0 {
 		pref.MaxSessionsPerDay = input.MaxSessionsPerDay
+	}
+	if input.Goals != nil {
+		pref.Goals = *input.Goals
+	}
+	if input.SchoolStart != nil {
+		pref.SchoolStart = *input.SchoolStart
+	}
+	if input.SchoolEnd != nil {
+		pref.SchoolEnd = *input.SchoolEnd
 	}
 
 	if err := ctrl.DB.WithContext(konteks.Request.Context()).Save(&pref).Error; err != nil {

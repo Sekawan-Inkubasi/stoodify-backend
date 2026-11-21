@@ -47,6 +47,10 @@ func routerParsial(user migrations.User) *gin.Engine {
 	subject := NewSubjectController(configDB())
 	r.PATCH("/subjects/:id", subject.Update)
 
+	userCtrl := NewUserController(configDB())
+	r.PATCH("/users/me/preferences", userCtrl.UpdatePreferences)
+	r.GET("/users/me/preferences", userCtrl.GetPreferences)
+
 	return r
 }
 
@@ -160,4 +164,28 @@ func TestSubjectPatchParsialMenjagaNama(t *testing.T) {
 	require.NoError(t, configDB().First(&sesudah, subject.ID).Error)
 	assert.Equal(t, "#22c55e", sesudah.Color)
 	assert.Equal(t, "Matematika", sesudah.Name)
+}
+
+func TestPreferencesPatchMenyimpanGoalsDanJamSekolah(t *testing.T) {
+	r, user, _ := setupUserDenganDB(t, "pref-goals@example.com")
+
+	body := `{"start_time":"16:30","end_time":"21:00","session_duration":60,"school_start":"07:00","school_end":"15:30","goals":"tasks,exams"}`
+	w := kirim(r, http.MethodPatch, "/users/me/preferences", body)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var pref migrations.UserPreference
+	require.NoError(t, configDB().Where("user_id = ?", user.ID).First(&pref).Error)
+	assert.Equal(t, "tasks,exams", pref.Goals)
+	assert.Equal(t, "07:00", pref.SchoolStart)
+	assert.Equal(t, "15:30", pref.SchoolEnd)
+	assert.Equal(t, "16:30", pref.StartTime)
+	assert.Equal(t, "21:00", pref.EndTime)
+	assert.Equal(t, 60, pref.SessionDuration)
+
+	// Verifikasi GET juga mengembalikan field tersebut
+	wGet := kirim(r, http.MethodGet, "/users/me/preferences", "")
+	require.Equal(t, http.StatusOK, wGet.Code, wGet.Body.String())
+	assert.Contains(t, wGet.Body.String(), "tasks,exams")
+	assert.Contains(t, wGet.Body.String(), "07:00")
+	assert.Contains(t, wGet.Body.String(), "15:30")
 }
